@@ -1,6 +1,6 @@
 # CareGrid — Hospital Readmission Prediction
 
-A clinical decision-support system that predicts 30-day hospital readmission risk using an XGBoost classifier trained on 25,000 patient encounters.
+A clinical decision-support system that predicts 30-day hospital readmission risk using an optimized XGBoost classifier trained on 25,000 patient encounters.
 
 ---
 
@@ -9,106 +9,111 @@ A clinical decision-support system that predicts 30-day hospital readmission ris
 ```
 Hospital_Readmission_Pred/          ← project root (git repo)
 │
-├── dataset/                        ← dataset folder (excluded from git)
-│   ├── .gitkeep
-│   └── hospital_readmissions.csv
+├── backend/                        ← Training entrypoint & orchestration
+│   ├── __init__.py
+│   └── train.py                    ← Master training pipeline (Phases 3–15)
 │
-├── backend/                        ← Python ML backend
-│   ├── models/                     ← serialised model checkpoints (excluded from git)
-│   │   ├── .gitkeep
-│   │   └── readmission_model.pkl
-│   ├── scripts/                    ← training & analysis scripts
-│   │   ├── main.py                 ← model training pipeline
-│   │   ├── evalutation.py          ← ROC-AUC & classification metrics
-│   │   ├── threshold_analysis.py   ← Precision/Recall/F1 across thresholds
-│   │   ├── gains_analysis.py       ← cumulative gains chart
-│   │   └── top_risk.py             ← top-N% risk capture analysis
-│   └── requirements.txt            ← pinned Python dependencies
+├── src/                            ← Core reusable ML modules
+│   ├── __init__.py
+│   ├── features.py                 ← Feature transformer (FunctionTransformer)
+│   ├── preprocessing.py            ← ColumnTransformer (impute, scale, OHE, ordinal)
+│   ├── model.py                    ← Pipeline builder, 5-fold CV, RandomizedSearchCV
+│   ├── calibration.py              ← Brier score assessment & Platt scaling wrapper
+│   ├── evaluation.py               ← ROC-AUC, PR-AUC, F2 thresholding, gains & lift
+│   └── explainability.py          ← SHAP TreeExplainer & feature attribution
+│
+├── models/                         ← Serialized models & metadata (excluded from git)
+│   ├── .gitkeep
+│   ├── readmission_model_baseline.pkl  ← Preserved original baseline model
+│   ├── readmission_model_final.pkl     ← Optimized deployable model pipeline
+│   ├── model_metadata.json             ← Pinned training metadata & metrics
+│   └── charts/                         ← Automated evaluation charts
+│       ├── calibration_curve.png
+│       ├── cumulative_gains.png
+│       ├── lift_chart.png
+│       ├── roc_curve.png
+│       └── shap_global_importance.png
+│
+├── dataset/                        ← Dataset folder (excluded from git)
+│   ├── .gitkeep
+│   └── hospital_readmissions.csv   ← 25,000 patient encounters
+│
+├── tests/                          ← Automated unit & integration tests
+│   ├── __init__.py
+│   └── test_model.py               ← 15 test cases (edge cases, ranges, SHAP, determinism)
 │
 ├── frontend/                       ← React frontend (to be implemented)
 │   └── .gitkeep
 │
+├── conftest.py                     ← Pytest configuration
+├── requirements.txt                ← Pinned Python dependencies
 ├── .gitignore
 └── README.md
 ```
 
 ---
 
-## Model Summary
+## Model Performance Summary
 
-| Property | Value |
-|---|---|
-| Algorithm | XGBoost Classifier |
-| Features | 16 (7 numeric, 1 ordinal, 8 categorical) |
-| Target | `readmitted` (yes / no → 1 / 0) |
-| Train/Test Split | 80% / 20%, stratified |
-| ROC-AUC | 0.6571 |
-| Operating Threshold | 0.35 |
-| Recall @ 0.35 | 0.866 |
-| Precision @ 0.35 | 0.519 |
-| Top-30% Capture | 40.3% of actual readmissions |
+| Metric | Baseline Model | Optimized Final Model |
+|---|---|---|
+| **Algorithm** | XGBoost Classifier | XGBoost Classifier (Tuned) |
+| **Features** | 16 (7 numeric, 1 ordinal, 8 categorical) | 16 (7 numeric, 1 ordinal, 8 categorical) |
+| **Target** | `readmitted` (yes / no → 1 / 0) | `readmitted` (yes / no → 1 / 0) |
+| **Validation Strategy** | Single 80/20 train/test split | 5-Fold Stratified CV + Holdout Test (20%) |
+| **ROC-AUC** | 0.6571 | **0.6581** |
+| **PR-AUC** | Not reported | **0.6282** |
+| **Operating Threshold** | 0.35 | **0.3496** (F2-selected on validation) |
+| **Recall @ Threshold** | 0.866 | **0.8762** |
+| **Precision @ Threshold** | 0.519 | **0.5156** |
+| **F1 @ Threshold** | 0.649 | **0.6492** |
+| **F2 @ Threshold** | Not reported | **0.7687** |
+| **Top-30% Capture** | 40.3% | **40.4%** |
+| **Top-30% Lift** | ~1.34x | **1.346x** |
 
 ---
 
-## Backend Setup
+## Quickstart & Execution
 
 ```bash
-cd backend
-
-# Create and activate a virtual environment
-python -m venv .venv
+# 1. Activate virtual environment
 .venv\Scripts\activate          # Windows
 # source .venv/bin/activate     # macOS / Linux
 
-# Install dependencies
-pip install -r requirements.txt
+# 2. Run the master training pipeline
+python backend/train.py
 
-# Train the model
-python main.py
-
-# Run evaluation
-python evalutation.py
-
-# Threshold analysis
-python threshold_analysis.py
-
-# Gains chart
-python gains_analysis.py
+# 3. Run all automated test suites
+python -m pytest tests/test_model.py -v
 ```
 
-> **Important:** `readmission_model.pkl` was serialised with `scikit-learn 1.9.0`.  
-> Do **not** upgrade or downgrade `scikit-learn` or `xgboost` without retraining and re-serialising the model.
-
----
-
-## Frontend Setup
-
-> Coming soon — React application with FastAPI integration.
+> **Important:** `readmission_model_final.pkl` was serialized with `scikit-learn 1.9.0` and `xgboost 3.4.0`.  
+> Do **not** upgrade or downgrade core dependencies without retraining and re-verifying the test suite.
 
 ---
 
 ## Planned Architecture
 
 ```
-React Frontend  ──POST /predict──►  FastAPI Backend  ──►  XGBoost Pipeline
-                ◄── JSON response ──                  ◄──  SHAP Explainer
+React Frontend  ──POST /predict──►  FastAPI Backend  ──►  XGBoost Pipeline (models/readmission_model_final.pkl)
+                ◄── JSON response ──                  ◄──  SHAP Explainer (src/explainability.py)
 ```
 
 **API Response shape:**
 ```json
 {
-  "risk_score": 0.61,
-  "risk_level": "High",
+  "risk_score": 0.4526,
+  "risk_level": "Medium",
   "explanations": [
-    { "feature": "n_inpatient", "direction": "increases risk", "importance": 0.18 }
+    { "feature": "n_inpatient", "direction": "decreases risk", "importance": -0.2167 },
+    { "feature": "age", "direction": "increases risk", "importance": 0.0964 }
   ],
-  "disclaimer": "Risk scores are model predictions, not clinical diagnoses."
+  "disclaimer": "Risk scores are model predictions for clinical prioritization, not diagnostic conclusions."
 }
 ```
 
 ---
 
-## Audit Status
+## Current Status
 
-See [`audit_report.md`](.gemini/brain/audit_report.md) for the full pre-deployment audit.  
-**Current status: Research-Demo Ready (B)** — API and frontend integration pending.
+**Status: Model Ready for API/UI Integration (C)** — All ML validation, thresholding, calibration assessment, explainability, tests, and clean architecture completed.

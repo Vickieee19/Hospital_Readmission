@@ -32,18 +32,16 @@ ENV/
 *.ipynb
 
 # ── Datasets & ML artefacts (large files — use DVC or Git LFS)
-hospital_readmissions.csv
-dataset/*.csv
 dataset/*.parquet
 dataset/*.json
+models/*.pkl
+models/*.pickle
+models/charts/*.png
 backend/models/*.pkl
 backend/models/*.pickle
-backend/data/*.csv
-backend/data/*.parquet
-backend/data/*.json
 # Keep .gitkeep files so empty folders are tracked
 !dataset/.gitkeep
-!backend/models/.gitkeep
+!models/.gitkeep
 # Catch-all for any other large binary formats
 *.h5
 *.hdf5

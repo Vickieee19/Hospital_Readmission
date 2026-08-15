@@ -1,0 +1,283 @@
+{
+    "artifact": "readmission_model_final.pkl",
+    "training_timestamp_utc": "2026-08-15T08:30:07.823351+00:00",
+    "python_version": "3.13.14",
+    "pandas_version": "2.2.3",
+    "numpy_version": "2.1.1",
+    "scikit_learn_version": "1.9.0",
+    "xgboost_version": "3.4.0",
+    "joblib_version": "1.5.3",
+    "dataset": {
+        "path": "C:\\Users\\Asus\\OneDrive\\Documents\\Desktop\\projects\\Hospital_Readmission_Pred\\dataset\\hospital_readmissions.csv",
+        "shape": [
+            25000,
+            17
+        ],
+        "feature_count": 16,
+        "target_column": "readmitted",
+        "target_encoding": {
+            "yes": 1,
+            "no": 0
+        }
+    },
+    "split_strategy": {
+        "method": "stratified train_test_split",
+        "train_pct": 64,
+        "calibration_pct": 16,
+        "test_pct": 20,
+        "random_state": 42,
+        "train_rows": 16000,
+        "calibration_rows": 4000,
+        "test_rows": 5000
+    },
+    "feature_engineering": {
+        "features_added": [
+            "total_prior_visits",
+            "procedures_per_day",
+            "meds_per_day",
+            "labs_per_day",
+            "had_prior_inpatient",
+            "had_prior_emergency"
+        ],
+        "leakage_safe": true,
+        "inside_pipeline": true
+    },
+    "preprocessing": {
+        "numeric": "median imputation + StandardScaler",
+        "age": "mode imputation + OrdinalEncoder (6 ordered brackets)",
+        "categorical": "mode imputation + OneHotEncoder(handle_unknown=ignore)",
+        "missing_sentinel": "kept as category"
+    },
+    "baseline_comparison": [
+        {
+            "Model": "XGBoost (default)",
+            "Mean_ROC_AUC": 0.6564,
+            "Std_ROC_AUC": 0.0066,
+            "Mean_PR_AUC": 0.6325,
+            "Std_PR_AUC": 0.0055,
+            "Notes": ""
+        },
+        {
+            "Model": "Random Forest",
+            "Mean_ROC_AUC": 0.6513,
+            "Std_ROC_AUC": 0.0075,
+            "Mean_PR_AUC": 0.6276,
+            "Std_PR_AUC": 0.0064,
+            "Notes": ""
+        },
+        {
+            "Model": "Logistic Regression",
+            "Mean_ROC_AUC": 0.6446,
+            "Std_ROC_AUC": 0.0121,
+            "Mean_PR_AUC": 0.6225,
+            "Std_PR_AUC": 0.0098,
+            "Notes": ""
+        },
+        {
+            "Model": "Dummy (stratified)",
+            "Mean_ROC_AUC": 0.5,
+            "Std_ROC_AUC": 0.0104,
+            "Mean_PR_AUC": 0.4703,
+            "Std_PR_AUC": 0.0052,
+            "Notes": ""
+        }
+    ],
+    "hyperparameter_search": {
+        "method": "RandomizedSearchCV",
+        "n_iter": 40,
+        "cv_folds": 5,
+        "scoring": "roc_auc",
+        "random_state": 42,
+        "best_params": {
+            "subsample": 0.7,
+            "reg_lambda": 5.0,
+            "reg_alpha": 0,
+            "n_estimators": 300,
+            "min_child_weight": 3,
+            "max_depth": 4,
+            "learning_rate": 0.03,
+            "gamma": 0.2,
+            "colsample_bytree": 0.9
+        }
+    },
+    "early_stopping": {
+        "recommended_n_estimators": 280,
+        "final_n_estimators": 300
+    },
+    "calibration": {
+        "method": "sigmoid (Platt scaling)",
+        "calibration_applied": false,
+        "brier_raw_on_cal": 0.2282,
+        "brier_calibrated_on_cal": 0.2282,
+        "delta_brier": -0.0,
+        "brier_raw_on_test": 0.2301,
+        "brier_calibrated_on_test": 0.2301
+    },
+    "threshold": {
+        "value": 0.3495609164237976,
+        "selection_method": "F2 maximisation on calibration set",
+        "val_precision": 0.5189,
+        "val_recall": 0.8825,
+        "val_f1": 0.6535,
+        "val_f2": 0.774,
+        "val_flagged_pct": 79.97
+    },
+    "final_test_metrics": {
+        "roc_auc": 0.6581,
+        "pr_auc": 0.6282,
+        "precision": 0.5156,
+        "recall": 0.8762,
+        "f1": 0.6492,
+        "f2": 0.7687,
+        "flagged_pct": 79.9,
+        "confusion_matrix": [
+            [
+                714,
+                1935
+            ],
+            [
+                291,
+                2060
+            ]
+        ]
+    },
+    "gains_table": [
+        {
+            "pct_patients": 10,
+            "n_patients": 500,
+            "readmissions_captured": 365,
+            "total_readmissions": 2351,
+            "capture_rate_pct": 15.53,
+            "random_baseline_pct": 10.0,
+            "lift": 1.553
+        },
+        {
+            "pct_patients": 20,
+            "n_patients": 1000,
+            "readmissions_captured": 674,
+            "total_readmissions": 2351,
+            "capture_rate_pct": 28.67,
+            "random_baseline_pct": 20.0,
+            "lift": 1.433
+        },
+        {
+            "pct_patients": 30,
+            "n_patients": 1500,
+            "readmissions_captured": 949,
+            "total_readmissions": 2351,
+            "capture_rate_pct": 40.37,
+            "random_baseline_pct": 30.0,
+            "lift": 1.346
+        },
+        {
+            "pct_patients": 40,
+            "n_patients": 2000,
+            "readmissions_captured": 1214,
+            "total_readmissions": 2351,
+            "capture_rate_pct": 51.64,
+            "random_baseline_pct": 40.0,
+            "lift": 1.291
+        },
+        {
+            "pct_patients": 50,
+            "n_patients": 2500,
+            "readmissions_captured": 1461,
+            "total_readmissions": 2351,
+            "capture_rate_pct": 62.14,
+            "random_baseline_pct": 50.0,
+            "lift": 1.243
+        },
+        {
+            "pct_patients": 60,
+            "n_patients": 3000,
+            "readmissions_captured": 1684,
+            "total_readmissions": 2351,
+            "capture_rate_pct": 71.63,
+            "random_baseline_pct": 60.0,
+            "lift": 1.194
+        },
+        {
+            "pct_patients": 70,
+            "n_patients": 3500,
+            "readmissions_captured": 1881,
+            "total_readmissions": 2351,
+            "capture_rate_pct": 80.01,
+            "random_baseline_pct": 70.0,
+            "lift": 1.143
+        },
+        {
+            "pct_patients": 80,
+            "n_patients": 4000,
+            "readmissions_captured": 2060,
+            "total_readmissions": 2351,
+            "capture_rate_pct": 87.62,
+            "random_baseline_pct": 80.0,
+            "lift": 1.095
+        },
+        {
+            "pct_patients": 90,
+            "n_patients": 4500,
+            "readmissions_captured": 2211,
+            "total_readmissions": 2351,
+            "capture_rate_pct": 94.05,
+            "random_baseline_pct": 90.0,
+            "lift": 1.045
+        },
+        {
+            "pct_patients": 100,
+            "n_patients": 5000,
+            "readmissions_captured": 2351,
+            "total_readmissions": 2351,
+            "capture_rate_pct": 100.0,
+            "random_baseline_pct": 100.0,
+            "lift": 1.0
+        }
+    ],
+    "shap": {
+        "implemented": true,
+        "top_features": [
+            {
+                "feature": "num__n_inpatient",
+                "mean_abs_shap": 0.3353668749332428
+            },
+            {
+                "feature": "num__n_outpatient",
+                "mean_abs_shap": 0.11264950782060623
+            },
+            {
+                "feature": "num__n_medications",
+                "mean_abs_shap": 0.10514882206916809
+            },
+            {
+                "feature": "cat__diabetes_med_no",
+                "mean_abs_shap": 0.07236041128635406
+            },
+            {
+                "feature": "num__n_emergency",
+                "mean_abs_shap": 0.07154933363199234
+            },
+            {
+                "feature": "age__age",
+                "mean_abs_shap": 0.07015757262706757
+            },
+            {
+                "feature": "num__n_lab_procedures",
+                "mean_abs_shap": 0.06730800122022629
+            },
+            {
+                "feature": "num__n_procedures",
+                "mean_abs_shap": 0.05160278454422951
+            },
+            {
+                "feature": "num__time_in_hospital",
+                "mean_abs_shap": 0.037139441817998886
+            },
+            {
+                "feature": "cat__diag_1_Other",
+                "mean_abs_shap": 0.028949087485671043
+            }
+        ]
+    },
+    "charts_dir": "C:\\Users\\Asus\\OneDrive\\Documents\\Desktop\\projects\\Hospital_Readmission_Pred\\models\\charts",
+    "baseline_model_preserved": "C:\\Users\\Asus\\OneDrive\\Documents\\Desktop\\projects\\Hospital_Readmission_Pred\\models\\readmission_model_baseline.pkl"
+}

@@ -1,34 +1,43 @@
-# ─────────────────────────────────────────────
-#  Hospital Readmission Prediction — Backend
+# ─────────────────────────────────────────────────────────────────
+#  Hospital Readmission Prediction — CareGrid
 #  requirements.txt
 #
-#  IMPORTANT: Pin ALL versions to match the
-#  environment used to train readmission_model.pkl.
-#  DO NOT upgrade scikit-learn or xgboost without
-#  retraining and re-serialising the model.
-# ─────────────────────────────────────────────
+#  PINNED to the exact versions used to train readmission_model_final.pkl
+#
+#  DO NOT upgrade scikit-learn or xgboost without:
+#   1. Retraining and re-serialising the model
+#   2. Updating model_metadata.json
+#   3. Re-running all 15 pytest cases
+#
+#  Environment: Python 3.13.14 / Windows
+#  Last updated: 2026-08-15
+# ─────────────────────────────────────────────────────────────────
 
-# ── Core ML ───────────────────────────────────
+# ── Core ML ──────────────────────────────────────────────────────
 scikit-learn==1.9.0
 xgboost==3.4.0
-joblib==1.5.1
+joblib==1.5.3
 
-# ── Data ──────────────────────────────────────
+# ── Data ─────────────────────────────────────────────────────────
 pandas==2.2.3
 numpy==2.1.1
 
-# ── Visualisation (analysis scripts) ──────────
-matplotlib==3.9.4
+# ── Visualisation ────────────────────────────────────────────────
+matplotlib==3.11.1
+scipy==1.18.0
 
-# ── Explainability ────────────────────────────
-shap==0.47.2
+# ── Explainability ───────────────────────────────────────────────
+# NOTE: shap requires numba (→ llvmlite, ~42 MB) on Windows.
+# Install with: pip install shap --prefer-binary
+# Exact version pinned after install:
+shap==0.52.0
 
-# ── API layer (FastAPI — to be implemented) ───
+# ── Dev / Testing ─────────────────────────────────────────────────
+pytest==8.4.1
+
+# ── API layer (FastAPI — to be implemented) ───────────────────────
 fastapi==0.115.12
 uvicorn[standard]==0.34.3
 pydantic==2.11.7
 python-multipart==0.0.20
-
-# ── Dev / Testing ─────────────────────────────
-pytest==8.4.1
-httpx==0.28.1        # async test client for FastAPI
+httpx==0.28.1
