@@ -1,0 +1,4 @@
+# This folder holds raw and processed datasets.
+#
+# *.csv and large data files are excluded from git (see .gitignore).
+# Place hospital_readmissions.csv here.

@@ -1,0 +1,34 @@
+# ─────────────────────────────────────────────
+#  Hospital Readmission Prediction — Backend
+#  requirements.txt
+#
+#  IMPORTANT: Pin ALL versions to match the
+#  environment used to train readmission_model.pkl.
+#  DO NOT upgrade scikit-learn or xgboost without
+#  retraining and re-serialising the model.
+# ─────────────────────────────────────────────
+
+# ── Core ML ───────────────────────────────────
+scikit-learn==1.9.0
+xgboost==3.4.0
+joblib==1.5.1
+
+# ── Data ──────────────────────────────────────
+pandas==2.2.3
+numpy==2.1.1
+
+# ── Visualisation (analysis scripts) ──────────
+matplotlib==3.9.4
+
+# ── Explainability ────────────────────────────
+shap==0.47.2
+
+# ── API layer (FastAPI — to be implemented) ───
+fastapi==0.115.12
+uvicorn[standard]==0.34.3
+pydantic==2.11.7
+python-multipart==0.0.20
+
+# ── Dev / Testing ─────────────────────────────
+pytest==8.4.1
+httpx==0.28.1        # async test client for FastAPI
