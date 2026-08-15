@@ -35,9 +35,10 @@ shap==0.52.0
 # ── Dev / Testing ─────────────────────────────────────────────────
 pytest==8.4.1
 
-# ── API layer (FastAPI — to be implemented) ───────────────────────
+# ── API & Demo UI ────────────────────────────────────────────────
 fastapi==0.115.12
 uvicorn[standard]==0.34.3
 pydantic==2.11.7
 python-multipart==0.0.20
 httpx==0.28.1
+streamlit==1.61.1
