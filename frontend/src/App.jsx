@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Activity, AlertCircle, Stethoscope } from 'lucide-react'
-import PatientForm, { defaultValues } from './components/PatientForm'
+import PatientForm from './components/PatientForm'
+import { defaultValues } from './constants/patient'
 import PredictionResult from './components/PredictionResult'
 import Loading from './components/Loading'
 import PdfUploadPanel from './components/PdfUploadPanel'

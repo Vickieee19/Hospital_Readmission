@@ -1,6 +1,7 @@
 {
     "artifact": "readmission_model_final.pkl",
-    "training_timestamp_utc": "2026-08-15T08:30:07.823351+00:00",
+    "training_timestamp_utc": "2026-08-17T05:29:11.764612+00:00",
+    "model_version": "v2 (Optuna+Ensemble+MCC)",
     "python_version": "3.13.14",
     "pandas_version": "2.2.3",
     "numpy_version": "2.1.1",
@@ -37,8 +38,17 @@
             "meds_per_day",
             "labs_per_day",
             "had_prior_inpatient",
-            "had_prior_emergency"
+            "had_prior_emergency",
+            "lab_to_med_ratio",
+            "utilisation_intensity",
+            "is_high_utiliser",
+            "meds_x_inpatient",
+            "long_stay_flag",
+            "no_test_flag",
+            "diag_complexity",
+            "specialty_x_inpatient"
         ],
+        "total_engineered": 14,
         "leakage_safe": true,
         "inside_pipeline": true
     },
@@ -51,26 +61,26 @@
     "baseline_comparison": [
         {
             "Model": "XGBoost (default)",
-            "Mean_ROC_AUC": 0.6564,
-            "Std_ROC_AUC": 0.0066,
-            "Mean_PR_AUC": 0.6325,
-            "Std_PR_AUC": 0.0055,
+            "Mean_ROC_AUC": 0.6563,
+            "Std_ROC_AUC": 0.0079,
+            "Mean_PR_AUC": 0.6324,
+            "Std_PR_AUC": 0.0075,
             "Notes": ""
         },
         {
             "Model": "Random Forest",
-            "Mean_ROC_AUC": 0.6513,
-            "Std_ROC_AUC": 0.0075,
-            "Mean_PR_AUC": 0.6276,
-            "Std_PR_AUC": 0.0064,
+            "Mean_ROC_AUC": 0.6523,
+            "Std_ROC_AUC": 0.0084,
+            "Mean_PR_AUC": 0.6301,
+            "Std_PR_AUC": 0.0066,
             "Notes": ""
         },
         {
             "Model": "Logistic Regression",
-            "Mean_ROC_AUC": 0.6446,
-            "Std_ROC_AUC": 0.0121,
-            "Mean_PR_AUC": 0.6225,
-            "Std_PR_AUC": 0.0098,
+            "Mean_ROC_AUC": 0.6492,
+            "Std_ROC_AUC": 0.0112,
+            "Mean_PR_AUC": 0.627,
+            "Std_PR_AUC": 0.0086,
             "Notes": ""
         },
         {
@@ -83,61 +93,95 @@
         }
     ],
     "hyperparameter_search": {
-        "method": "RandomizedSearchCV",
-        "n_iter": 40,
+        "method": "Optuna TPE (Bayesian)",
+        "n_trials_xgb": 100,
+        "n_trials_lgbm": 100,
         "cv_folds": 5,
         "scoring": "roc_auc",
         "random_state": 42,
-        "best_params": {
-            "subsample": 0.7,
-            "reg_lambda": 5.0,
-            "reg_alpha": 0,
-            "n_estimators": 300,
-            "min_child_weight": 3,
+        "xgb_best_params": {
+            "n_estimators": 386,
             "max_depth": 4,
-            "learning_rate": 0.03,
-            "gamma": 0.2,
-            "colsample_bytree": 0.9
+            "learning_rate": 0.01895910834200616,
+            "min_child_weight": 6,
+            "subsample": 0.6432497251300436,
+            "colsample_bytree": 0.8442928969447939,
+            "colsample_bylevel": 0.8102712808133308,
+            "gamma": 1.0194781224816714,
+            "reg_alpha": 1.569704398119041,
+            "reg_lambda": 7.219262838871237
+        },
+        "lgbm_best_params": {
+            "n_estimators": 438,
+            "num_leaves": 34,
+            "max_depth": 6,
+            "learning_rate": 0.018223098207684058,
+            "min_child_samples": 11,
+            "subsample": 0.9862191714399744,
+            "colsample_bytree": 0.7471949894181051,
+            "reg_alpha": 1.7699650602196182,
+            "reg_lambda": 9.369692049650551
         }
     },
     "early_stopping": {
-        "recommended_n_estimators": 280,
-        "final_n_estimators": 300
+        "recommended_n_estimators": 386,
+        "final_n_estimators": 386
+    },
+    "ensemble": {
+        "type": "soft-voting",
+        "models": [
+            "XGBoost",
+            "LightGBM"
+        ],
+        "weights": [
+            1.0,
+            1.0
+        ],
+        "ensemble_cv_roc_auc": 0.6607
     },
     "calibration": {
-        "method": "sigmoid (Platt scaling)",
+        "method": "isotonic (non-parametric)",
         "calibration_applied": false,
-        "brier_raw_on_cal": 0.2282,
-        "brier_calibrated_on_cal": 0.2282,
-        "delta_brier": -0.0,
-        "brier_raw_on_test": 0.2301,
-        "brier_calibrated_on_test": 0.2301
+        "brier_raw_on_cal": 0.2286,
+        "brier_calibrated_on_cal": 0.2286,
+        "delta_brier": 1.5492139376460656e-05,
+        "brier_on_test": 0.2302318428311606
     },
     "threshold": {
-        "value": 0.3495609164237976,
-        "selection_method": "F2 maximisation on calibration set",
-        "val_precision": 0.5189,
-        "val_recall": 0.8825,
-        "val_f1": 0.6535,
-        "val_f2": 0.774,
-        "val_flagged_pct": 79.97
+        "value": 0.5226972244679051,
+        "selection_method": "MCC maximisation on calibration set",
+        "val_precision": 0.6514,
+        "val_recall": 0.4391,
+        "val_f1": 0.5246,
+        "val_f2": 0.4697,
+        "val_mcc": 0.2473,
+        "val_balanced_acc": 0.6153,
+        "val_flagged_pct": 31.7,
+        "f2_threshold_comparison": {
+            "value": 0.3448088360423903,
+            "precision": 0.5181,
+            "recall": 0.8814,
+            "flagged_pct": 80.0
+        }
     },
     "final_test_metrics": {
-        "roc_auc": 0.6581,
-        "pr_auc": 0.6282,
-        "precision": 0.5156,
-        "recall": 0.8762,
-        "f1": 0.6492,
-        "f2": 0.7687,
-        "flagged_pct": 79.9,
+        "roc_auc": 0.6564,
+        "pr_auc": 0.6286,
+        "precision": 0.6277,
+        "recall": 0.4275,
+        "f1": 0.5086,
+        "f2": 0.4566,
+        "mcc": 0.2166,
+        "balanced_accuracy": 0.6012,
+        "flagged_pct": 32.02,
         "confusion_matrix": [
             [
-                714,
-                1935
+                2053,
+                596
             ],
             [
-                291,
-                2060
+                1346,
+                1005
             ]
         ]
     },
@@ -154,74 +198,74 @@
         {
             "pct_patients": 20,
             "n_patients": 1000,
-            "readmissions_captured": 674,
+            "readmissions_captured": 680,
             "total_readmissions": 2351,
-            "capture_rate_pct": 28.67,
+            "capture_rate_pct": 28.92,
             "random_baseline_pct": 20.0,
-            "lift": 1.433
+            "lift": 1.446
         },
         {
             "pct_patients": 30,
             "n_patients": 1500,
-            "readmissions_captured": 949,
+            "readmissions_captured": 956,
             "total_readmissions": 2351,
-            "capture_rate_pct": 40.37,
+            "capture_rate_pct": 40.66,
             "random_baseline_pct": 30.0,
-            "lift": 1.346
+            "lift": 1.355
         },
         {
             "pct_patients": 40,
             "n_patients": 2000,
-            "readmissions_captured": 1214,
+            "readmissions_captured": 1212,
             "total_readmissions": 2351,
-            "capture_rate_pct": 51.64,
+            "capture_rate_pct": 51.55,
             "random_baseline_pct": 40.0,
-            "lift": 1.291
+            "lift": 1.289
         },
         {
             "pct_patients": 50,
             "n_patients": 2500,
-            "readmissions_captured": 1461,
+            "readmissions_captured": 1459,
             "total_readmissions": 2351,
-            "capture_rate_pct": 62.14,
+            "capture_rate_pct": 62.06,
             "random_baseline_pct": 50.0,
-            "lift": 1.243
+            "lift": 1.241
         },
         {
             "pct_patients": 60,
             "n_patients": 3000,
-            "readmissions_captured": 1684,
+            "readmissions_captured": 1680,
             "total_readmissions": 2351,
-            "capture_rate_pct": 71.63,
+            "capture_rate_pct": 71.46,
             "random_baseline_pct": 60.0,
-            "lift": 1.194
+            "lift": 1.191
         },
         {
             "pct_patients": 70,
             "n_patients": 3500,
-            "readmissions_captured": 1881,
+            "readmissions_captured": 1883,
             "total_readmissions": 2351,
-            "capture_rate_pct": 80.01,
+            "capture_rate_pct": 80.09,
             "random_baseline_pct": 70.0,
-            "lift": 1.143
+            "lift": 1.144
         },
         {
             "pct_patients": 80,
             "n_patients": 4000,
-            "readmissions_captured": 2060,
+            "readmissions_captured": 2063,
             "total_readmissions": 2351,
-            "capture_rate_pct": 87.62,
+            "capture_rate_pct": 87.75,
             "random_baseline_pct": 80.0,
-            "lift": 1.095
+            "lift": 1.097
         },
         {
             "pct_patients": 90,
             "n_patients": 4500,
-            "readmissions_captured": 2211,
+            "readmissions_captured": 2216,
             "total_readmissions": 2351,
-            "capture_rate_pct": 94.05,
+            "capture_rate_pct": 94.26,
             "random_baseline_pct": 90.0,
-            "lift": 1.045
+            "lift": 1.047
         },
         {
             "pct_patients": 100,
@@ -235,46 +279,47 @@
     ],
     "shap": {
         "implemented": true,
+        "note": "Computed on XGB sub-pipeline of ensemble",
         "top_features": [
             {
-                "feature": "num__n_inpatient",
-                "mean_abs_shap": 0.3353668749332428
+                "feature": "num__total_prior_visits",
+                "mean_abs_shap": 0.19480235874652863
             },
             {
-                "feature": "num__n_outpatient",
-                "mean_abs_shap": 0.11264950782060623
-            },
-            {
-                "feature": "num__n_medications",
-                "mean_abs_shap": 0.10514882206916809
-            },
-            {
-                "feature": "cat__diabetes_med_no",
-                "mean_abs_shap": 0.07236041128635406
-            },
-            {
-                "feature": "num__n_emergency",
-                "mean_abs_shap": 0.07154933363199234
+                "feature": "num__utilisation_intensity",
+                "mean_abs_shap": 0.15333712100982666
             },
             {
                 "feature": "age__age",
-                "mean_abs_shap": 0.07015757262706757
+                "mean_abs_shap": 0.08375927805900574
+            },
+            {
+                "feature": "num__meds_x_inpatient",
+                "mean_abs_shap": 0.08194123953580856
+            },
+            {
+                "feature": "num__n_medications",
+                "mean_abs_shap": 0.05849577859044075
+            },
+            {
+                "feature": "num__lab_to_med_ratio",
+                "mean_abs_shap": 0.05825274437665939
+            },
+            {
+                "feature": "num__procedures_per_day",
+                "mean_abs_shap": 0.056323595345020294
+            },
+            {
+                "feature": "cat__diabetes_med_no",
+                "mean_abs_shap": 0.05076833441853523
             },
             {
                 "feature": "num__n_lab_procedures",
-                "mean_abs_shap": 0.06730800122022629
+                "mean_abs_shap": 0.03877066820859909
             },
             {
-                "feature": "num__n_procedures",
-                "mean_abs_shap": 0.05160278454422951
-            },
-            {
-                "feature": "num__time_in_hospital",
-                "mean_abs_shap": 0.037139441817998886
-            },
-            {
-                "feature": "cat__diag_1_Other",
-                "mean_abs_shap": 0.028949087485671043
+                "feature": "num__labs_per_day",
+                "mean_abs_shap": 0.02707953006029129
             }
         ]
     },

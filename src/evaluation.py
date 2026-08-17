@@ -5,12 +5,13 @@ Full evaluation suite for the readmission-risk model.
 
 Contents
 --------
-compute_metrics()          ROC-AUC, PR-AUC, confusion matrix, F1, P, R
-select_threshold_on_val()  Choose operating threshold on validation data
-                           using F-beta (beta=2) to favour recall
-evaluate_at_threshold()    Evaluate chosen threshold on any split
-compute_gains_table()      Cumulative gains and lift at 10/20/.../100 %
-plot_cumulative_gains()    Save cumulative gains + lift charts as PNG
+compute_metrics()            ROC-AUC, PR-AUC, confusion matrix, F1, P, R, MCC
+select_threshold_by_mcc()    Choose threshold maximising MCC (balanced accuracy
+                             on both classes equally) — PRIMARY method
+select_threshold_on_val()    Legacy F-beta threshold selection (kept for reference)
+evaluate_at_threshold()      Evaluate chosen threshold on any split
+compute_gains_table()        Cumulative gains and lift at 10/20/.../100 %
+plot_cumulative_gains()      Save cumulative gains + lift charts as PNG
 """
 
 from __future__ import annotations
@@ -25,9 +26,11 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import (
     average_precision_score,
+    balanced_accuracy_score,
     confusion_matrix,
     f1_score,
     fbeta_score,
+    matthews_corrcoef,
     precision_recall_curve,
     precision_score,
     recall_score,
@@ -70,20 +73,80 @@ def compute_metrics(
         y_pred = (y_proba >= threshold).astype(int)
         cm     = confusion_matrix(y_true, y_pred)
         results.update({
-            "threshold":    threshold,
-            "precision":    round(float(precision_score(y_true, y_pred, zero_division=0)), 4),
-            "recall":       round(float(recall_score(y_true, y_pred, zero_division=0)),    4),
-            "f1":           round(float(f1_score(y_true, y_pred, zero_division=0)),         4),
-            "f2":           round(float(fbeta_score(y_true, y_pred, beta=2, zero_division=0)), 4),
-            "confusion_matrix": cm.tolist(),
-            "flagged_count": int(y_pred.sum()),
-            "flagged_pct":   round(float(y_pred.mean() * 100), 2),
+            "threshold":         threshold,
+            "precision":         round(float(precision_score(y_true, y_pred, zero_division=0)), 4),
+            "recall":            round(float(recall_score(y_true, y_pred, zero_division=0)),    4),
+            "f1":                round(float(f1_score(y_true, y_pred, zero_division=0)),         4),
+            "f2":                round(float(fbeta_score(y_true, y_pred, beta=2, zero_division=0)), 4),
+            "mcc":               round(float(matthews_corrcoef(y_true, y_pred)),                  4),
+            "balanced_accuracy": round(float(balanced_accuracy_score(y_true, y_pred)),            4),
+            "confusion_matrix":  cm.tolist(),
+            "flagged_count":     int(y_pred.sum()),
+            "flagged_pct":       round(float(y_pred.mean() * 100), 2),
         })
 
     return results
 
 
-# ── Threshold selection (on validation data only) ──────────────────────────
+# ── MCC threshold selection (PRIMARY — on validation data only) ──────────────
+
+def select_threshold_by_mcc(
+    y_val: np.ndarray | pd.Series,
+    y_proba_val: np.ndarray,
+) -> tuple[float, dict]:
+    """
+    Select the operating threshold that maximises the Matthews Correlation
+    Coefficient (MCC) on validation data.
+
+    Why MCC?
+    --------
+    MCC is the single most balanced metric for binary classification:
+    - It accounts for ALL four cells of the confusion matrix (TP, TN, FP, FN)
+    - A high MCC requires being correct on BOTH classes simultaneously
+    - Unlike F2 (which only rewarded recall), MCC penalises false positives
+      and false negatives equally
+    - Range: -1 (worst) to +1 (perfect), 0 = random
+
+    This is the PRIMARY threshold method replacing the F2-maximisation approach.
+
+    Parameters
+    ----------
+    y_val       : true labels for validation split
+    y_proba_val : predicted probabilities on validation split
+
+    Returns
+    -------
+    (best_threshold, val_metrics_dict)
+    """
+    y_val = np.asarray(y_val)
+
+    # Evaluate MCC at every unique predicted probability value
+    # Use a grid of ~200 candidate thresholds for efficiency
+    thresholds = np.unique(
+        np.percentile(y_proba_val, np.linspace(5, 95, 200))
+    )
+
+    best_thr = 0.5
+    best_mcc = -2.0
+
+    for thr in thresholds:
+        y_pred = (y_proba_val >= thr).astype(int)
+        # Skip degenerate cases where all predictions are one class
+        if y_pred.sum() == 0 or y_pred.sum() == len(y_pred):
+            continue
+        mcc = matthews_corrcoef(y_val, y_pred)
+        if mcc > best_mcc:
+            best_mcc = mcc
+            best_thr = float(thr)
+
+    val_metrics = compute_metrics(y_val, y_proba_val, threshold=best_thr)
+    val_metrics["selection_metric"] = "MCC maximisation"
+    val_metrics["selection_mcc"]    = round(best_mcc, 4)
+
+    return best_thr, val_metrics
+
+
+# ── Legacy F-beta threshold selection (kept for reference) ─────────────────
 
 def select_threshold_on_val(
     y_val: np.ndarray | pd.Series,
