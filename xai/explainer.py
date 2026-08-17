@@ -8,10 +8,18 @@ import shap
 
 
 def _unwrap_model(model: Any) -> Any:
-    """Return the underlying estimator from a wrapped sklearn model."""
-    if hasattr(model, "estimator"):
-        return model.estimator
-    return model
+    """Return the underlying estimator from a wrapped sklearn model or ensemble."""
+    actual = model
+
+    while hasattr(actual, "estimator"):
+        actual = actual.estimator
+
+    if hasattr(actual, "estimators_") and len(actual.estimators_) > 0:
+        first_estimator = actual.estimators_[0]
+        if hasattr(first_estimator, "steps") or hasattr(first_estimator, "named_steps"):
+            actual = first_estimator
+
+    return actual
 
 
 def _get_feature_names(model: Any) -> list[str]:
@@ -21,7 +29,9 @@ def _get_feature_names(model: Any) -> list[str]:
         preprocessor = dict(model.steps).get("preprocessor")
         if preprocessor is not None:
             return list(preprocessor.get_feature_names_out())
-    return list(model.feature_names_in_)
+    if hasattr(model, "feature_names_in_"):
+        return list(model.feature_names_in_)
+    return []
 
 
 def _compute_shap_values(model: Any, patient_df: pd.DataFrame) -> tuple[np.ndarray, float, list[str]]:
@@ -45,11 +55,24 @@ def _compute_shap_values(model: Any, patient_df: pd.DataFrame) -> tuple[np.ndarr
             base_value = float(base_value[-1])
         return values[0], base_value, feature_names
 
+    if hasattr(raw_model, "predict_proba") and hasattr(raw_model, "feature_names_in_"):
+        explainer = shap.Explainer(raw_model, patient_df)
+        explanation = explainer(patient_df)
+        values = explanation.values
+        if values.ndim == 3:
+            values = values[:, :, 1]
+        return values[0], float(explanation.base_values[0]), list(raw_model.feature_names_in_)
+
     raise TypeError("Model must be a fitted sklearn pipeline or wrapped estimator with SHAP-compatible tree explainer.")
 
 
 def _safe_prediction(model: Any, patient_df: pd.DataFrame) -> float:
     """Return class-1 probability from the model."""
+    actual = _unwrap_model(model)
+    if hasattr(actual, "predict_proba"):
+        return float(actual.predict_proba(patient_df)[0, 1])
+    if hasattr(actual, "predict"):
+        return float(actual.predict(patient_df)[0])
     if hasattr(model, "predict_proba"):
         return float(model.predict_proba(patient_df)[0, 1])
     if hasattr(model, "predict"):

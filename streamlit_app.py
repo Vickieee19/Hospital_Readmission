@@ -19,6 +19,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from xai import explain_prediction
+
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Hospital Readmission Risk & Prevention",
@@ -205,6 +207,72 @@ A1C_OPTIONS      = ["no", "normal", "high", "Missing"]
 
 CLINICAL_THRESHOLD = 0.52  # Standard calibrated threshold (MCC-optimized)
 
+
+def _humanize_shap_feature(name: str) -> str:
+    """Convert raw SHAP feature names into readable clinician-facing labels."""
+    label = name.strip()
+    label = label.replace("num__", "").replace("cat__", "").replace("age__", "")
+    label = label.replace("_", " ")
+
+    mapping = {
+        "total prior visits": "Total prior visits",
+        "lab to med ratio": "Lab-to-medication ratio",
+        "labs per day": "Labs per day",
+        "time in hospital": "Length of stay",
+        "n inpatient": "Prior inpatient admissions",
+        "n emergency": "Prior emergency visits",
+        "n outpatient": "Prior outpatient visits",
+        "n procedures": "Procedure count",
+        "n lab procedures": "Lab procedure count",
+        "n medications": "Medication count",
+        "medical specialty": "Admitting specialty",
+        "diag 1": "Primary diagnosis",
+        "diag 2": "Secondary diagnosis",
+        "diag 3": "Tertiary diagnosis",
+        "glucose test": "Glucose test",
+        "a1c test": "A1C test",
+        "medication change": "Medication change",
+        "diabetes med": "Diabetes medication",
+        "age": "Age bracket",
+    }
+
+    for key, value in mapping.items():
+        if key in label.lower():
+            return value
+
+    if "medical specialty" in label.lower():
+        return label.replace("medical specialty", "Admitting specialty")
+    if "diag" in label.lower():
+        return label.replace("diag", "Diagnosis")
+
+    return label.title()
+
+
+def _build_shap_summary(explanation: dict) -> str:
+    """Create concise, readable narrative from top SHAP contributors."""
+    risk_items = explanation.get("top_increasing_risk", [])[:3]
+    protect_items = explanation.get("top_decreasing_risk", [])[:3]
+
+    risk_text = ", ".join(
+        f"{_humanize_shap_feature(item['feature'])} (+{item['shap_value']:.3f})"
+        for item in risk_items
+    )
+    protect_text = ", ".join(
+        f"{_humanize_shap_feature(item['feature'])} ({item['shap_value']:.3f})"
+        for item in protect_items
+    )
+
+    summary_parts = []
+    if risk_items:
+        summary_parts.append(f"Main risk drivers were {risk_text}.")
+    if protect_items:
+        summary_parts.append(f"The main protective factors were {protect_text}.")
+    if not summary_parts:
+        return "The model did not identify strong positive or negative feature shifts for this patient profile."
+
+    return " ".join(summary_parts)
+
+
 @st.cache_resource(show_spinner="Loading readmission prediction model…")
 def load_model():
     return joblib.load(MODEL_PATH)
@@ -323,36 +391,80 @@ if model_ok and predict_btn:
                 </p>
             </div>
             """, unsafe_allow_html=True)
-            
-        # Key Contributing Factors
-        st.markdown("#### 🔍 Why this patient received this score:")
-        factors = []
-        
-        if n_inpatient >= 1:
-            factors.append((True, f"<b>Prior Inpatient Admissions:</b> {n_inpatient} previous hospital stay(s) in the past year is a primary driver of readmission."))
-        if n_emergency >= 1:
-            factors.append((True, f"<b>Prior Emergency Visits:</b> {n_emergency} ER encounter(s) indicates frequent acute complications."))
-        if n_medications >= 20:
-            factors.append((True, f"<b>High Medication Burden:</b> {n_medications} active medications significantly elevates polypharmacy & adherence risks."))
-        elif n_medications >= 12:
-            factors.append((True, f"<b>Moderate Medication Count:</b> {n_medications} active medications."))
-        if time_in_hospital >= 6:
-            factors.append((True, f"<b>Extended Length of Stay:</b> {time_in_hospital} days in hospital reflects severe illness severity."))
-        if age in ["[70-80)", "[80-90)", "[90-100)"]:
-            factors.append((True, f"<b>Elderly Age Bracket:</b> {age} increases vulnerability post-discharge."))
-        if diag_1 in ["Circulatory", "Diabetes", "Respiratory"]:
-            factors.append((True, f"<b>Primary Diagnosis:</b> {diag_1} is a chronic condition associated with frequent recidivism."))
-            
-        if not factors:
-            factors.append((False, "<b>Low Hospital Utilization:</b> 0 prior inpatient or emergency admissions in the past year."))
-            factors.append((False, f"<b>Short Hospital Stay:</b> Discharged after only {time_in_hospital} day(s)."))
-            factors.append((False, f"<b>Low Medication Count:</b> Only {n_medications} medications prescribed."))
-            
-        for is_risk, text in factors[:4]:
-            css_cls = "risk-factor-item" if is_risk else "safe-factor-item"
-            icon = "⚠️" if is_risk else "✓"
-            st.markdown(f"<div class='{css_cls}'><span>{icon}</span> <span>{text}</span></div>", unsafe_allow_html=True)
-            
+
+        # SHAP-based clinical explanation
+        st.markdown("#### 🔍 Clinical interpretation of the prediction:")
+        try:
+            explanation = explain_prediction(model, patient_df, top_n=5)
+            top_risk = explanation.get("top_increasing_risk", [])[:3]
+            top_lower = explanation.get("top_decreasing_risk", [])[:3]
+
+            primary_risk = top_risk[0] if top_risk else None
+            primary_protective = top_lower[0] if top_lower else None
+
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%); border: 1px solid #cbd5e1; border-radius: 16px; padding: 1rem 1.2rem; margin-bottom: 1rem;">
+                <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: #475569; font-weight: 700; margin-bottom: 0.5rem;">Model reasoning summary</div>
+                <div style="font-size: 1rem; color: #0f172a; line-height: 1.6; font-weight: 500;">
+                    <span style="color:#0f172a;">""" + _build_shap_summary(explanation) + """</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            col_summary_1, col_summary_2 = st.columns(2)
+            with col_summary_1:
+                if primary_risk:
+                    st.markdown(
+                        f"""
+                        <div class="risk-factor-item">
+                            <span>⚠️</span>
+                            <span><b>Highest risk driver:</b> {_humanize_shap_feature(primary_risk['feature'])} with a contribution of <b>+{primary_risk['shap_value']:.4f}</b>.</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown("<div class='safe-factor-item'><span>✓</span> <span><b>Highest risk driver:</b> no strong positive contributor identified.</span></div>", unsafe_allow_html=True)
+
+            with col_summary_2:
+                if primary_protective:
+                    st.markdown(
+                        f"""
+                        <div class="safe-factor-item">
+                            <span>✓</span>
+                            <span><b>Strongest protective factor:</b> {_humanize_shap_feature(primary_protective['feature'])} reduced risk by <b>{primary_protective['shap_value']:.4f}</b>.</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown("<div class='risk-factor-item'><span>⚠️</span> <span><b>Strongest protective factor:</b> none identified.</span></div>", unsafe_allow_html=True)
+
+            if top_risk:
+                st.markdown("**Main factors increasing risk:**")
+                for item in top_risk:
+                    feature = _humanize_shap_feature(item["feature"])
+                    shap_val = item["shap_value"]
+                    st.markdown(
+                        f"<div class='risk-factor-item'><span>⚠️</span> <span><b>{feature}</b> pushed the score upward by <b>+{shap_val:.4f}</b>.</span></div>",
+                        unsafe_allow_html=True,
+                    )
+
+            if top_lower:
+                st.markdown("**Factors reducing the risk:**")
+                for item in top_lower:
+                    feature = _humanize_shap_feature(item["feature"])
+                    shap_val = item["shap_value"]
+                    st.markdown(
+                        f"<div class='safe-factor-item'><span>✓</span> <span><b>{feature}</b> lowered the score by <b>{shap_val:.4f}</b>.</span></div>",
+                        unsafe_allow_html=True,
+                    )
+
+            st.caption(explanation.get("disclaimer", "SHAP values explain contribution strength only, not causation."))
+        except Exception as exc:
+            st.warning(f"SHAP explanation could not be generated for this patient: {exc}")
+            st.info("The underlying model continues to produce a prediction, but explainability is temporarily unavailable.")
+
     with col_res_right:
         # Visual Risk Gauge
         gauge_color = "#ef4444" if is_high_risk else ("#f59e0b" if risk_proba >= 0.35 else "#22c55e")
