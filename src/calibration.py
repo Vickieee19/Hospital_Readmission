@@ -6,24 +6,14 @@ readmission-risk pipeline.
 
 Why calibration matters
 -----------------------
-XGBoost outputs raw "scores" that are not guaranteed to represent true
-probabilities. Showing "73% chance of readmission" based on raw XGBoost
-output is scientifically misleading unless calibration has been verified.
+XGBoost and tree ensembles output raw scores that are not guaranteed to
+represent true probabilities. Showing "73% chance of readmission" based on raw
+model output is scientifically misleading unless calibration has been verified.
 
 This module:
 1. Assesses calibration quality on validation data (Brier score + reliability diagram)
-2. Optionally wraps the fitted estimator in CalibratedClassifierCV if
-   calibration materially improves reliability (Δ Brier > 0.005)
+2. Implements Platt (sigmoid) and Isotonic calibration wrappers compatible with sklearn
 3. Returns a clear flag indicating whether calibration was applied
-
-Design decisions
-----------------
-- Calibration is fitted on a held-out CALIBRATION set (a subset of the
-  dev/train portion), not on the final test set.
-- Sigmoid (Platt) scaling is used; isotonic regression requires more
-  samples for stable results and can overfit on smaller calibration sets.
-- The calibration threshold for application is Δ Brier > 0.005
-  (a practically meaningful improvement, not just numerical noise).
 """
 
 from __future__ import annotations

@@ -6,9 +6,12 @@ optimization for the hospital readmission risk model.
 
 Contents
 --------
-build_pipeline()            Full sklearn Pipeline: feature eng -> preprocess -> XGB
-run_baseline_comparison()   Dummy / LogReg / RF / XGBoost under 5-fold CV
-run_hyperparameter_search() RandomizedSearchCV on XGBoost, 40 iterations
+build_pipeline()              Full sklearn Pipeline: feature eng -> preprocess -> XGB
+build_lgbm_pipeline()         Full sklearn Pipeline: feature eng -> preprocess -> LGBM
+build_ensemble_pipeline()     Soft-voting ensemble of XGB + LGBM pipelines
+run_baseline_comparison()     Dummy / LogReg / RF / XGBoost under 5-fold CV
+run_optuna_search()           Bayesian HPO via Optuna TPE (100 trials, ROC-AUC)
+run_hyperparameter_search()   Legacy RandomizedSearchCV (kept as fallback)
 """
 
 from __future__ import annotations
@@ -19,11 +22,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from sklearn.dummy import DummyClassifier
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import (
     RandomizedSearchCV,
     StratifiedKFold,
+    cross_val_score,
     cross_validate,
 )
 from sklearn.pipeline import Pipeline
@@ -32,30 +36,25 @@ from xgboost import XGBClassifier
 from src.features import make_feature_transformer
 from src.preprocessing import build_preprocessor
 
-# ── Constants ──────────────────────────────────────────────────────────────
+# â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 RANDOM_STATE = 42
 N_SPLITS     = 5
 
 
-# ── Pipeline builder ───────────────────────────────────────────────────────
+# â”€â”€ Pipeline builders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def build_pipeline(
     xgb_params: dict[str, Any] | None = None,
     use_feature_engineering: bool = True,
 ) -> Pipeline:
     """
-    Build the complete end-to-end sklearn Pipeline.
+    Build the complete end-to-end sklearn Pipeline with XGBoost classifier.
 
     If use_feature_engineering=True (default):
         raw DataFrame
-            v FunctionTransformer  (6 engineered features)
+            v FunctionTransformer  (14 engineered features)
             v ColumnTransformer    (impute + scale + encode)
-            v XGBClassifier
-
-    If use_feature_engineering=False:
-        raw DataFrame
-            v ColumnTransformer    (impute + scale + encode, raw cols only)
             v XGBClassifier
 
     Parameters
@@ -93,7 +92,6 @@ def build_pipeline(
             ("classifier",   xgb),
         ])
     else:
-        # Build preprocessor with RAW features only (no engineered columns)
         from sklearn.compose import ColumnTransformer
         from sklearn.impute import SimpleImputer
         from sklearn.preprocessing import StandardScaler, OrdinalEncoder, OneHotEncoder
@@ -133,7 +131,123 @@ def build_pipeline(
         ])
 
 
-# ── Baseline comparison ────────────────────────────────────────────────────
+def build_lgbm_pipeline(
+    lgbm_params: dict[str, Any] | None = None,
+) -> Pipeline:
+    """
+    Build the complete end-to-end sklearn Pipeline with LightGBM classifier.
+
+    LightGBM uses leaf-wise growth (vs XGB's depth-wise), so it makes
+    different types of errors â€” makes it complementary in an ensemble.
+
+    Parameters
+    ----------
+    lgbm_params : dict, optional
+        Override default LightGBM parameters.
+
+    Returns
+    -------
+    sklearn.pipeline.Pipeline
+    """
+    from lightgbm import LGBMClassifier
+
+    default_lgbm = {
+        "n_estimators":     300,
+        "max_depth":        -1,          # uncapped; controlled by num_leaves
+        "num_leaves":       31,
+        "learning_rate":    0.05,
+        "subsample":        0.8,
+        "colsample_bytree": 0.8,
+        "min_child_samples":20,
+        "reg_alpha":        0.0,
+        "reg_lambda":       1.0,
+        "objective":        "binary",
+        "random_state":     RANDOM_STATE,
+        "n_jobs":           -1,
+        "verbosity":        -1,
+    }
+    if lgbm_params:
+        default_lgbm.update(lgbm_params)
+
+    lgbm = LGBMClassifier(**default_lgbm)
+
+    return Pipeline([
+        ("feature_eng",  make_feature_transformer()),
+        ("preprocessor", build_preprocessor()),
+        ("classifier",   lgbm),
+    ])
+
+
+def build_ensemble_pipeline(
+    xgb_params: dict[str, Any] | None = None,
+    lgbm_params: dict[str, Any] | None = None,
+    xgb_weight: float = 1.0,
+    lgbm_weight: float = 1.0,
+) -> Pipeline:
+    """
+    Build a soft-voting ensemble of XGBoost and LightGBM pipelines.
+
+    Each pipeline is a full feature-eng â†’ preprocess â†’ classifier stack.
+    The VotingClassifier averages their predicted probabilities (soft voting),
+    which is more powerful than hard voting for well-calibrated models.
+
+    Parameters
+    ----------
+    xgb_params  : XGBoost hyperparameters (post-Optuna)
+    lgbm_params : LightGBM hyperparameters (post-Optuna)
+    xgb_weight  : weight for XGBoost predictions (default 1.0)
+    lgbm_weight : weight for LightGBM predictions (default 1.0)
+
+    Returns
+    -------
+    sklearn.pipeline.Pipeline wrapping a VotingClassifier
+    """
+    from lightgbm import LGBMClassifier
+
+    # Build full params
+    xgb_full = {
+        "n_estimators": 300, "max_depth": 4, "learning_rate": 0.05,
+        "subsample": 0.8, "colsample_bytree": 0.8,
+        "objective": "binary:logistic", "eval_metric": "logloss",
+        "random_state": RANDOM_STATE, "n_jobs": -1, "verbosity": 0,
+    }
+    if xgb_params:
+        xgb_full.update(xgb_params)
+
+    lgbm_full = {
+        "n_estimators": 300, "max_depth": -1, "num_leaves": 31,
+        "learning_rate": 0.05, "subsample": 0.8, "colsample_bytree": 0.8,
+        "min_child_samples": 20, "reg_alpha": 0.0, "reg_lambda": 1.0,
+        "objective": "binary", "random_state": RANDOM_STATE,
+        "n_jobs": -1, "verbosity": -1,
+    }
+    if lgbm_params:
+        lgbm_full.update(lgbm_params)
+
+    # Each constituent pipeline is independently built with feature engineering
+    xgb_pipe = Pipeline([
+        ("feature_eng",  make_feature_transformer()),
+        ("preprocessor", build_preprocessor()),
+        ("classifier",   XGBClassifier(**xgb_full)),
+    ])
+
+    lgbm_pipe = Pipeline([
+        ("feature_eng",  make_feature_transformer()),
+        ("preprocessor", build_preprocessor()),
+        ("classifier",   LGBMClassifier(**lgbm_full)),
+    ])
+
+    ensemble = VotingClassifier(
+        estimators=[("xgb", xgb_pipe), ("lgbm", lgbm_pipe)],
+        voting="soft",
+        weights=[xgb_weight, lgbm_weight],
+        n_jobs=1,   # each model already parallelises internally
+    )
+
+    return ensemble
+
+
+# â”€â”€ Baseline comparison â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def run_baseline_comparison(
     X: pd.DataFrame,
@@ -162,9 +276,6 @@ def run_baseline_comparison(
                          random_state=RANDOM_STATE)
 
     scoring = {"roc_auc": "roc_auc", "avg_precision": "average_precision"}
-
-    feat_eng   = make_feature_transformer()
-    preprocess = build_preprocessor()
 
     candidates = {
         "Dummy (stratified)": Pipeline([
@@ -197,7 +308,7 @@ def run_baseline_comparison(
                 pipeline, X, y,
                 cv=cv,
                 scoring=scoring,
-                n_jobs=1,        # inner XGB already uses n_jobs=-1
+                n_jobs=1,
                 return_train_score=False,
             )
 
@@ -215,7 +326,97 @@ def run_baseline_comparison(
     return df
 
 
-# ── Hyperparameter search ──────────────────────────────────────────────────
+# â”€â”€ Optuna Bayesian Hyperparameter Search (PRIMARY) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+def run_optuna_search(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    n_trials: int = 100,
+    model_type: str = "xgb",   # "xgb" or "lgbm"
+) -> tuple[dict[str, Any], float]:
+    """
+    Bayesian hyperparameter optimisation using Optuna TPE sampler.
+
+    Why Optuna over RandomizedSearchCV?
+    ------------------------------------
+    - TPE (Tree-structured Parzen Estimator) learns which parameter regions
+      are promising from previous trials â€” smarter than random sampling
+    - 100 informed trials >> 40 random trials for finding the true optimum
+    - Supports pruning of unpromising trials for speed
+    - Returns full trial history for analysis
+
+    Parameters
+    ----------
+    X_train    : raw training features
+    y_train    : binary target
+    n_trials   : number of Optuna trials (default 100)
+    model_type : "xgb" for XGBoost, "lgbm" for LightGBM
+
+    Returns
+    -------
+    (best_params, best_cv_auc)
+    """
+    import optuna
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
+
+    def xgb_objective(trial: optuna.Trial) -> float:
+        params = {
+            "n_estimators":     trial.suggest_int("n_estimators", 200, 600),
+            "max_depth":        trial.suggest_int("max_depth", 3, 7),
+            "learning_rate":    trial.suggest_float("learning_rate", 0.01, 0.15, log=True),
+            "min_child_weight": trial.suggest_int("min_child_weight", 1, 10),
+            "subsample":        trial.suggest_float("subsample", 0.5, 1.0),
+            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.4, 1.0),
+            "colsample_bylevel":trial.suggest_float("colsample_bylevel", 0.4, 1.0),
+            "gamma":            trial.suggest_float("gamma", 0.0, 2.0),
+            "reg_alpha":        trial.suggest_float("reg_alpha", 0.0, 2.0),
+            "reg_lambda":       trial.suggest_float("reg_lambda", 0.5, 10.0, log=True),
+        }
+        pipeline = build_pipeline(xgb_params=params)
+        scores = cross_val_score(
+            pipeline, X_train, y_train,
+            cv=cv, scoring="roc_auc", n_jobs=1,
+        )
+        return float(scores.mean())
+
+    def lgbm_objective(trial: optuna.Trial) -> float:
+        from lightgbm import LGBMClassifier
+        params = {
+            "n_estimators":      trial.suggest_int("n_estimators", 200, 600),
+            "num_leaves":        trial.suggest_int("num_leaves", 20, 100),
+            "max_depth":         trial.suggest_int("max_depth", 3, 10),
+            "learning_rate":     trial.suggest_float("learning_rate", 0.01, 0.15, log=True),
+            "min_child_samples": trial.suggest_int("min_child_samples", 5, 50),
+            "subsample":         trial.suggest_float("subsample", 0.5, 1.0),
+            "colsample_bytree":  trial.suggest_float("colsample_bytree", 0.4, 1.0),
+            "reg_alpha":         trial.suggest_float("reg_alpha", 0.0, 2.0),
+            "reg_lambda":        trial.suggest_float("reg_lambda", 0.5, 10.0, log=True),
+        }
+        pipeline = build_lgbm_pipeline(lgbm_params=params)
+        scores = cross_val_score(
+            pipeline, X_train, y_train,
+            cv=cv, scoring="roc_auc", n_jobs=1,
+        )
+        return float(scores.mean())
+
+    objective = xgb_objective if model_type == "xgb" else lgbm_objective
+    sampler    = optuna.samplers.TPESampler(seed=RANDOM_STATE)
+    study      = optuna.create_study(direction="maximize", sampler=sampler)
+
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
+
+    best_params   = study.best_trial.params
+    best_cv_auc   = study.best_trial.value
+
+    print(f"\n[Optuna/{model_type.upper()}] Best CV ROC-AUC : {best_cv_auc:.4f}")
+    print(f"[Optuna/{model_type.upper()}] Best params     : {best_params}")
+
+    return best_params, best_cv_auc
+
+
+# â”€â”€ Legacy RandomizedSearchCV (kept as fallback) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def run_hyperparameter_search(
     X_train: pd.DataFrame,
@@ -223,11 +424,10 @@ def run_hyperparameter_search(
     n_iter: int = 40,
 ) -> tuple[Pipeline, dict[str, Any]]:
     """
-    RandomizedSearchCV over XGBoost hyperparameters.
+    RandomizedSearchCV over XGBoost hyperparameters (legacy fallback).
 
-    Search space chosen to cover regularisation, tree structure, and
-    stochasticity — wide enough to escape the hand-tuned defaults but
-    not so large that it takes hours.
+    Prefer run_optuna_search() for better results. This is kept for
+    backward compatibility.
 
     Parameters
     ----------
@@ -267,9 +467,9 @@ def run_hyperparameter_search(
         n_iter=n_iter,
         scoring="roc_auc",
         cv=cv,
-        refit=True,           # refit best params on full X_train
+        refit=True,
         random_state=RANDOM_STATE,
-        n_jobs=1,             # XGB already parallelises internally
+        n_jobs=1,
         verbose=1,
         return_train_score=False,
     )
@@ -285,3 +485,4 @@ def run_hyperparameter_search(
     print(f"[HyperOpt] Best params     : {best_params}")
 
     return search.best_estimator_, best_params
+

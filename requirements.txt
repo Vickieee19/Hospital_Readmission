@@ -42,3 +42,6 @@ pydantic==2.11.7
 python-multipart==0.0.20
 httpx==0.28.1
 streamlit==1.61.1
+plotly>=5.20.0
+optuna>=4.0.0
+lightgbm>=4.0.0

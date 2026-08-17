@@ -45,17 +45,21 @@ from sklearn.pipeline import Pipeline
 def extract_components(pipeline) -> tuple:
     """
     Extract (feature_transformer_or_None, preprocessor, xgb_classifier)
-    from a fitted pipeline.
+    from a fitted pipeline or ensemble.
 
     Handles:
       - 3-step pipeline: feature_eng -> preprocessor -> classifier
       - 2-step pipeline: preprocessor -> classifier  (no feature engineering)
-      - PlattCalibratedPipeline wrapper: unwraps via .estimator
+      - Calibration wrapper: unwraps via .estimator
+      - VotingClassifier ensemble: extracts first pipeline (XGBoost sub-pipeline)
     """
-    # Unwrap PlattCalibratedPipeline or CalibratedClassifierCV
     actual_pipeline = pipeline
-    if hasattr(pipeline, "estimator"):
-        actual_pipeline = pipeline.estimator
+    if hasattr(actual_pipeline, "estimator"):
+        actual_pipeline = actual_pipeline.estimator
+
+    if hasattr(actual_pipeline, "estimators_"):
+        # For VotingClassifier or stacking ensemble, use the XGBoost component
+        actual_pipeline = actual_pipeline.estimators_[0]
 
     steps = dict(actual_pipeline.steps)
 

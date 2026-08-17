@@ -11,14 +11,14 @@ export const predictReadmission = async (patientData) => {
     return response.data
   } catch (error) {
     if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-      throw new Error('Unable to connect to the prediction server. Please make sure the backend is running.')
+      throw new Error('Unable to connect to the prediction server. Please make sure the backend is running.', { cause: error })
     }
 
     if (error.response?.status === 400 || error.response?.status === 422) {
-      throw new Error('Please review the patient details and try again.')
+      throw new Error('Please review the patient details and try again.', { cause: error })
     }
 
-    throw new Error('Unable to connect to the prediction server. Please make sure the backend is running.')
+    throw new Error('Unable to connect to the prediction server. Please make sure the backend is running.', { cause: error })
   }
 }
 
@@ -35,10 +35,10 @@ export const uploadPdf = async (file) => {
     return response.data
   } catch (error) {
     if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
-      throw new Error('Unable to connect to the PDF upload server. Please make sure the backend is running.')
+      throw new Error('Unable to connect to the PDF upload server. Please make sure the backend is running.', { cause: error })
     }
 
     const detail = error.response?.data?.detail || 'Unable to upload the PDF.'
-    throw new Error(detail)
+    throw new Error(detail, { cause: error })
   }
 }
