@@ -8,11 +8,16 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Resolve the project root (two levels up from this file: utils/ → project root)
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_ENV_FILE = _PROJECT_ROOT / ".env"
+# Resolve the project roots
+_RAG_ROOT = Path(__file__).resolve().parent.parent  # backend/rag
+_REPO_ROOT = Path(__file__).resolve().parents[3]   # project root
 
-load_dotenv(dotenv_path=_ENV_FILE, override=False)
+# Load root .env
+_ENV_FILE = _REPO_ROOT / ".env"
+if not _ENV_FILE.exists():
+    _ENV_FILE = _RAG_ROOT / ".env"
+
+load_dotenv(dotenv_path=_ENV_FILE, override=True)
 
 
 def _require(key: str) -> str:
@@ -29,11 +34,13 @@ def _require(key: str) -> str:
 def _path(key: str, default: str) -> Path:
     raw = os.getenv(key, default)
     p = Path(raw)
-    # If relative, anchor to project root
+    # If relative, anchor to repo root
     if not p.is_absolute():
-        p = _PROJECT_ROOT / p
+        p = _REPO_ROOT / p
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
 
 
 # ── API Keys ──────────────────────────────────────────────────────────────────

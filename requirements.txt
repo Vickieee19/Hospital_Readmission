@@ -1,47 +1,51 @@
 # ─────────────────────────────────────────────────────────────────
-#  Hospital Readmission Prediction — CareGrid
-#  requirements.txt
+#  Hospital Readmission Prediction & Clinical Severity — CareGrid
+#  requirements.txt (Unified Project Dependencies)
 #
-#  PINNED to the exact versions used to train readmission_model_final.pkl
-#
-#  DO NOT upgrade scikit-learn or xgboost without:
-#   1. Retraining and re-serialising the model
-#   2. Updating model_metadata.json
-#   3. Re-running all 15 pytest cases
-#
-#  Environment: Python 3.13.14 / Windows
-#  Last updated: 2026-08-15
+#  Environment: Python 3.10+ / Windows
 # ─────────────────────────────────────────────────────────────────
 
-# ── Core ML ──────────────────────────────────────────────────────
+# ── Core ML & Readmission Risk Pipeline ──────────────────────────
 scikit-learn==1.9.0
 xgboost==3.4.0
+lightgbm>=4.0.0
+optuna>=4.0.0
 joblib==1.5.3
 
-# ── Data ─────────────────────────────────────────────────────────
+# ── Data & Numerical ─────────────────────────────────────────────
 pandas==2.2.3
 numpy==2.1.1
-
-# ── Visualisation ────────────────────────────────────────────────
-matplotlib==3.11.1
 scipy==1.18.0
+
+# ── Visualisation & Dashboard ────────────────────────────────────
+matplotlib==3.11.1
+plotly>=5.20.0
+streamlit==1.61.1
 
 # ── Explainability ───────────────────────────────────────────────
 # NOTE: shap requires numba (→ llvmlite, ~42 MB) on Windows.
 # Install with: pip install shap --prefer-binary
-# Exact version pinned after install:
 shap==0.52.0
 
-# ── Dev / Testing ─────────────────────────────────────────────────
-pytest==8.4.1
-
-# ── API & Demo UI ────────────────────────────────────────────────
+# ── Backend API & Network ────────────────────────────────────────
 fastapi==0.115.12
 uvicorn[standard]==0.34.3
 pydantic==2.11.7
 python-multipart==0.0.20
 httpx==0.28.1
-streamlit==1.61.1
-plotly>=5.20.0
-optuna>=4.0.0
-lightgbm>=4.0.0
+
+# ── Clinical Severity RAG & LLM ──────────────────────────────────
+google-genai>=1.0.0
+groq>=0.4.1
+chromadb>=0.5.0
+sentence-transformers>=3.0.0
+langchain-text-splitters>=0.2.0
+pymupdf>=1.24.0
+
+# ── Utilities, Environment & Logging ─────────────────────────────
+python-dotenv>=1.0.0
+loguru>=0.7.0
+tqdm>=4.66.0
+
+# ── Dev / Testing ────────────────────────────────────────────────
+pytest==8.4.1

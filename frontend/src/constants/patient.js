@@ -29,5 +29,6 @@ export const defaultValues = {
   A1Ctest: 'no',
   change: 'yes',
   diabetes_med: 'yes',
-  threshold: 0.35,
+  threshold: 0.52,
 }
+
