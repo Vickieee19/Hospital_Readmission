@@ -34,11 +34,7 @@ ENV/
 # ── Datasets & ML artefacts (large files — use DVC or Git LFS)
 dataset/*.parquet
 dataset/*.json
-models/*.pkl
-models/*.pickle
 models/charts/*.png
-backend/models/*.pkl
-backend/models/*.pickle
 # Keep .gitkeep files so empty folders are tracked
 !dataset/.gitkeep
 !models/.gitkeep
