@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # CareGrid — Clinical Decision Support & 30-Day Readmission Risk System
 
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg?style=flat&logo=fastapi)](https://fastapi.tiangolo.com)
@@ -85,6 +86,13 @@
        │ - SHAP TreeExplainer          │ │ - Option A/B Partial Flow │ │ - JWT Token Validation    │
        └───────────────────────────────┘ └───────────────────────────┘ └───────────────────────────┘
 ```
+=======
+# CareGrid — Hospital Readmission Prediction & Clinical Decision Support
+
+A clinical decision-support system that predicts 30-day hospital readmission risk using an optimized machine learning ensemble (XGBoost + LightGBM) and provides grounded medical guideline severity analysis via RAG.
+
+> 📖 **Full Technical Architecture & Workflow Document**: For an in-depth, step-by-step breakdown of the ML pipeline, feature engineering, threshold calibration, RAG engine, and UI architecture, see **[`PROJECT_WORKFLOW.md`](file:///c:/Users/Asus/OneDrive/Documents/Desktop/projects/Hospital_Readmission_Pred/PROJECT_WORKFLOW.md)**.
+>>>>>>> 642687495a4825e9c55ae9978d0c0a4d46b8571e
 
 ---
 
