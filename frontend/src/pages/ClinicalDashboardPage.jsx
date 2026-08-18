@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 
 const defaultValues = {
+  patient_name: 'Eleanor Vance',
   age: '[70-80)',
   time_in_hospital: 5,
   n_lab_procedures: 40,
@@ -62,7 +63,10 @@ export default function ClinicalDashboardPage() {
     setError(null)
     try {
       const predictionData = await predictReadmission(dataToPredict)
-      setResult(predictionData)
+      setResult({
+        ...predictionData,
+        patient_data: dataToPredict,
+      })
 
       if (shouldScroll && resultsRef.current) {
         setTimeout(() => {

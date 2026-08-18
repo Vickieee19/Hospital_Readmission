@@ -5,6 +5,7 @@ import {
   ClipboardList,
   CheckCircle2,
   AlertTriangle,
+  User,
 } from 'lucide-react'
 import {
   AGE_OPTIONS,
@@ -109,6 +110,31 @@ export default function PatientForm({
             )}
           </div>
         )}
+      </div>
+
+      {/* ─────────────────────────────────────────────────────────────
+          PATIENT IDENTIFICATION / FULL NAME
+      ───────────────────────────────────────────────────────────── */}
+      <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="w-full sm:w-1/2 space-y-1.5">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <User className="h-3.5 w-3.5 text-blue-600" />
+              <span>Patient Full Name</span>
+              <span className="text-[10px] text-slate-500 font-normal">(Used in AI Narrative & Brief)</span>
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. Eleanor Vance, John Doe"
+              value={formData.patient_name || ''}
+              onChange={(e) => handleChange('patient_name', e.target.value)}
+              className="input-clinical font-semibold text-slate-900 bg-white"
+            />
+          </div>
+          <div className="text-xs text-slate-500 italic pt-1 sm:pt-4">
+            Patient name will be personalized into the AI Clinical Summary and exported transition brief.
+          </div>
+        </div>
       </div>
 
       {/* ─────────────────────────────────────────────────────────────

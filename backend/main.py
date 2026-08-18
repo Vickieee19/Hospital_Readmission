@@ -55,6 +55,7 @@ from backend.models_db import User
 from backend.auth import get_current_user, seed_default_admin
 from backend.routes_auth import router as auth_router
 from backend.routes_admin import router as admin_router
+from backend.clinical_summary import generate_ai_clinical_summary
 
 # ── Paths ───────────────────────────────────────────────────────────────────
 MODELS_DIR = PROJECT_ROOT / "models"
@@ -127,6 +128,7 @@ app.include_router(admin_router)
 
 # ── Pydantic Request & Response Schemas ─────────────────────────────────────
 class PatientInput(BaseModel):
+    patient_name: str | None = Field(default="John Doe", json_schema_extra={"example": "John Doe"})
     age: str = Field(default="[70-80)", json_schema_extra={"example": "[70-80)"})
     time_in_hospital: int = Field(default=5, ge=0, json_schema_extra={"example": 5})
     n_lab_procedures: int = Field(default=40, ge=0, json_schema_extra={"example": 40})
@@ -195,6 +197,9 @@ class PredictionResponse(BaseModel):
     domain_scores: list[DomainScore]
     benchmarks: list[BenchmarkMetric]
     disclaimer: str
+    ai_clinical_summary: str | None = None
+    ai_summary_engine: str | None = None
+    ai_plain_text_report: str | None = None
     xai_explanation: dict[str, Any] | None = None
 
 
@@ -581,8 +586,8 @@ def predict_readmission(
         patient.threshold if patient.threshold is not None else _default_threshold
     )
 
-    # Convert to single-row DataFrame (excluding custom threshold parameter)
-    feature_dict = {k: v for k, v in patient_dict.items() if k != "threshold"}
+    # Convert to single-row DataFrame (excluding custom threshold & patient_name metadata)
+    feature_dict = {k: v for k, v in patient_dict.items() if k not in ["threshold", "patient_name"]}
     patient_df = pd.DataFrame([feature_dict])
 
     try:
@@ -687,6 +692,17 @@ def predict_readmission(
         domain_scores = calculate_domain_scores(patient_dict)
         benchmarks = calculate_benchmarks(patient_dict)
 
+        # ── Generative AI Clinical Summary Synthesis ────────────────────────
+        pred_summary_payload = {
+            "prediction": is_high_risk,
+            "probability": prob,
+            "threshold": operating_threshold,
+            "risk_level": risk_level,
+            "top_increasing_risk": top_increasing,
+            "top_decreasing_risk": top_decreasing,
+        }
+        ai_summary_data = generate_ai_clinical_summary(patient_dict, pred_summary_payload)
+
         return PredictionResponse(
             prediction=is_high_risk,
             probability=prob,
@@ -703,6 +719,9 @@ def predict_readmission(
             domain_scores=domain_scores,
             benchmarks=benchmarks,
             disclaimer=disclaimer_text,
+            ai_clinical_summary=ai_summary_data.get("summary"),
+            ai_summary_engine=ai_summary_data.get("engine"),
+            ai_plain_text_report=ai_summary_data.get("full_plain_text"),
             xai_explanation=xai_explanation_data,
         )
     except Exception as e:

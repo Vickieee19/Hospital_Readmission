@@ -66,3 +66,38 @@ def test_explain_prediction_handles_empty_top_n(model, normal_patient):
     assert isinstance(result["top_increasing_risk"], list)
     assert isinstance(result["top_decreasing_risk"], list)
     assert isinstance(result["feature_contributions"], list)
+
+
+def test_ai_clinical_summary_generation():
+    from backend.clinical_summary import generate_ai_clinical_summary
+
+    patient_data = {
+        "age": "[70-80)",
+        "time_in_hospital": 5,
+        "n_lab_procedures": 40,
+        "n_procedures": 2,
+        "n_medications": 15,
+        "n_outpatient": 0,
+        "n_inpatient": 1,
+        "n_emergency": 0,
+        "medical_specialty": "InternalMedicine",
+        "diag_1": "Circulatory",
+        "diag_2": "Diabetes",
+    }
+    prediction_data = {
+        "prediction": 1,
+        "probability": 0.72,
+        "threshold": 0.5227,
+        "risk_level": "High",
+        "top_increasing_risk": [{"feature": "Prior Inpatient Admissions", "shap_value": 0.35}],
+        "top_decreasing_risk": [],
+    }
+
+    res = generate_ai_clinical_summary(patient_data, prediction_data)
+    assert isinstance(res, dict)
+    assert "summary" in res
+    assert "engine" in res
+    assert "status" in res
+    assert res["status"] == "success"
+    assert "high risk" in res["summary"].lower() or "readmission" in res["summary"].lower()
+

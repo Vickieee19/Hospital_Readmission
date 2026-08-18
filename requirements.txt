@@ -38,10 +38,14 @@ pymupdf>=1.24.0
 
 # ── Database & Authentication ────────────────────────────────────
 sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
 passlib[bcrypt]>=1.7.4
 bcrypt>=4.0.0
 python-jose[cryptography]>=3.3.0
 pyjwt>=2.8.0
+
+# ── Generative AI & Clinical Synthesis ───────────────────────────
+groq>=0.18.0
 
 # ── Utilities, Environment & Logging ─────────────────────────────
 python-dotenv>=1.0.0

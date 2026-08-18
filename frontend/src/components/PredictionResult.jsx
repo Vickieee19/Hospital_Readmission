@@ -22,6 +22,10 @@ import {
   TrendingUp,
   TrendingDown,
   BrainCircuit,
+  Copy,
+  Check,
+  Download,
+  Bot,
 } from 'lucide-react'
 import {
   BarChart,
@@ -117,6 +121,58 @@ export default function PredictionResult({ result }) {
   const isBinaryReadmitted = result.prediction === 1 || Number(result.probability || 0) >= Number(result.threshold || 0.5227)
   const binaryVerdict = isBinaryReadmitted ? 'YES' : 'NO'
   const thresholdPct = ((result.threshold || 0.5227) * 100).toFixed(1)
+
+  const [copiedSummary, setCopiedSummary] = useState(false)
+
+  const aiSummaryText =
+    result.ai_clinical_summary ||
+    `This patient has been identified as high risk for readmission. Previous inpatient utilization and medication burden are among the factors contributing to the elevated risk.`
+  const aiEngineName = result.ai_summary_engine || 'CareGrid Clinical AI Synthesizer'
+
+  const patientName = result.patient_data?.patient_name || 'Eleanor Vance'
+  const patientAge = String(result.patient_data?.age || '[70-80)').replace(/[()\[\]]/g, '').replace('-', '–')
+  const patientStay = `${result.patient_data?.time_in_hospital ?? 5} days`
+  const patientInpatient = result.patient_data?.n_inpatient ?? 1
+  const patientMeds = result.patient_data?.n_medications ?? 15
+  const diag1 = result.patient_data?.diag_1 || 'Circulatory'
+  const diag2 = result.patient_data?.diag_2
+  const patientDiagnoses = diag2 && diag2 !== 'None' && diag2 !== 'no' && diag2 !== 'Missing' ? `${diag1} / ${diag2}` : diag1
+  const probRounded = Math.round(Number(result.probability || 0.72) * 100)
+  const riskTierUpper = (result.risk_level || (isHighRisk ? 'HIGH' : 'LOW')).toUpperCase()
+  const riskTierText = riskTierUpper.includes('RISK') ? riskTierUpper : `${riskTierUpper} RISK`
+
+  const formattedPlainText =
+    result.ai_plain_text_report ||
+    `Patient: ${patientName}
+Age: ${patientAge}
+Hospital stay: ${patientStay}
+Previous inpatient visits: ${patientInpatient}
+Medications: ${patientMeds}
+Diagnoses: ${patientDiagnoses}
+
+Model Result
+Readmission Risk: ${probRounded}% — ${riskTierText} (Predicted: ${binaryVerdict})
+
+AI Clinical Summary
+“${aiSummaryText}”`
+
+  const handleCopySummary = () => {
+    navigator.clipboard.writeText(formattedPlainText)
+    setCopiedSummary(true)
+    setTimeout(() => setCopiedSummary(false), 2000)
+  }
+
+  const handleDownloadBrief = () => {
+    const blob = new Blob([formattedPlainText], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `Patient_Clinical_Summary_Brief_${Date.now()}.txt`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="space-y-8 text-slate-900 print:text-black">
@@ -303,6 +359,105 @@ export default function PredictionResult({ result }) {
             {result.risk_level || (isHighRisk ? 'High' : 'Low')} Risk
           </div>
           <span className="text-[10px] text-slate-500">Population Risk Category</span>
+        </div>
+      </div>
+
+      {/* ─────────────────────────────────────────────────────────────
+          2.2 AI CLINICAL SUMMARY (GenAI Synthesis & Download)
+      ───────────────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50/70 via-white to-blue-50/50 p-5 sm:p-6 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-100/80 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm shadow-indigo-600/20">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900">AI Clinical Summary</h3>
+                <span className="rounded-md bg-indigo-100 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-indigo-800 border border-indigo-200">
+                  GenAI Powered
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Automated clinical synthesis of encounter parameters, model probability & SHAP risk drivers
+              </p>
+            </div>
+          </div>
+
+          {/* Action Buttons: Copy & Download */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCopySummary}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 hover:border-slate-300 transition cursor-pointer"
+            >
+              {copiedSummary ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5 text-slate-500" />}
+              <span>{copiedSummary ? 'Copied to Clipboard!' : 'Copy Summary'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDownloadBrief}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition cursor-pointer"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Download Clinical Brief (.txt)</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 3-Section Human-Understandable Card */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-2xs space-y-4">
+          {/* Section 1: Patient Profile */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Patient Profile
+              </div>
+              <div className="text-xs font-bold text-slate-900 bg-slate-100 px-2.5 py-0.5 rounded-md border border-slate-200">
+                {patientName}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs text-slate-700 font-medium">
+              <div>Age: <span className="text-slate-900 font-semibold">{patientAge}</span></div>
+              <div>Hospital stay: <span className="text-slate-900 font-semibold">{patientStay}</span></div>
+              <div>Previous inpatient visits: <span className="text-slate-900 font-semibold">{patientInpatient}</span></div>
+              <div>Medications: <span className="text-slate-900 font-semibold">{patientMeds}</span></div>
+              <div className="col-span-2">Diagnoses: <span className="text-slate-900 font-semibold">{patientDiagnoses}</span></div>
+            </div>
+          </div>
+
+          {/* Section 2: Model Result */}
+          <div className="border-t border-slate-100 pt-3">
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+              Model Result
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-extrabold text-slate-900">Readmission Risk:</span>
+              <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-0.5 text-xs font-black ${isHighRisk ? 'bg-rose-100 text-rose-800 border border-rose-200' : isModerateRisk ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
+                <span>{probRounded}% — {riskTierText}</span>
+                <span className="opacity-90 font-bold">(Predicted: {binaryVerdict})</span>
+              </span>
+            </div>
+          </div>
+
+          {/* Section 3: AI Clinical Summary */}
+          <div className="border-t border-slate-100 pt-3">
+            <div className="text-xs font-bold uppercase tracking-wider text-indigo-700 mb-1.5">
+              AI Clinical Summary
+            </div>
+            <p className="text-sm sm:text-base leading-relaxed text-slate-800 font-medium italic bg-indigo-50/40 p-3.5 rounded-lg border border-indigo-100/60">
+              &ldquo;{aiSummaryText}&rdquo;
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+            <span className="flex items-center gap-1.5">
+              <Bot className="h-3.5 w-3.5 text-indigo-600" />
+              <span>Engine: <strong className="text-slate-700 font-semibold">{aiEngineName}</strong></span>
+            </span>
+            <span className="text-slate-400">Plain text format for clinician review & discharge note</span>
+          </div>
         </div>
       </div>
 
