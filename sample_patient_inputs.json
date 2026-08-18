@@ -1,0 +1,40 @@
+{
+  "high_risk_patient": {
+    "age": "[70-80)",
+    "time_in_hospital": 6,
+    "n_lab_procedures": 45,
+    "n_procedures": 2,
+    "n_medications": 18,
+    "n_outpatient": 0,
+    "n_inpatient": 1,
+    "n_emergency": 1,
+    "medical_specialty": "Cardiology",
+    "diag_1": "Circulatory",
+    "diag_2": "Diabetes",
+    "diag_3": "Other",
+    "glucose_test": "high",
+    "A1Ctest": "high",
+    "change": "yes",
+    "diabetes_med": "yes",
+    "threshold": 0.5227
+  },
+  "low_risk_patient": {
+    "age": "[40-50)",
+    "time_in_hospital": 2,
+    "n_lab_procedures": 15,
+    "n_procedures": 0,
+    "n_medications": 4,
+    "n_outpatient": 1,
+    "n_inpatient": 0,
+    "n_emergency": 0,
+    "medical_specialty": "Family/GeneralPractice",
+    "diag_1": "Digestive",
+    "diag_2": "Other",
+    "diag_3": "Other",
+    "glucose_test": "normal",
+    "A1Ctest": "normal",
+    "change": "no",
+    "diabetes_med": "no",
+    "threshold": 0.5227
+  }
+}

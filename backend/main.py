@@ -1,9 +1,9 @@
-    """
+"""
 backend/main.py
 ───────────────
 CareGrid FastAPI Backend Server
-Integrates 30-Day Hospital Readmission Risk Prediction (XGBoost/LightGBM Ensemble)
-and Clinical Severity RAG Analysis.
+Integrates 30-Day Hospital Readmission Risk Prediction (XGBoost/LightGBM Ensemble),
+XAI Explainability (SHAP), and Clinical PDF Report Auto-Fill.
 """
 
 from __future__ import annotations
@@ -19,22 +19,27 @@ import joblib
 import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 # ── Ensure Project Root and Modules are in sys.path ─────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BACKEND_DIR = Path(__file__).resolve().parent
-RAG_ROOT = BACKEND_DIR / "rag"
 
-for p in [PROJECT_ROOT, BACKEND_DIR, RAG_ROOT]:
+for p in [PROJECT_ROOT, BACKEND_DIR]:
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
 
 # Load root .env
 load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=True)
+
+# Clinical PDF Extractor
+try:
+    from backend.pdf_extractor import extract_patient_data_from_text
+except ImportError:
+    from pdf_extractor import extract_patient_data_from_text
 
 # Safe XAI import
 _has_xai = False
@@ -43,6 +48,13 @@ try:
     _has_xai = True
 except Exception as e:
     print(f"[Info] XAI explanation module deferred: {e}")
+
+# Database, Models & Authentication Routers
+from backend.database import Base, engine, SessionLocal, init_db_schema
+from backend.models_db import User
+from backend.auth import get_current_user, seed_default_admin
+from backend.routes_auth import router as auth_router
+from backend.routes_admin import router as admin_router
 
 # ── Paths ───────────────────────────────────────────────────────────────────
 MODELS_DIR = PROJECT_ROOT / "models"
@@ -79,20 +91,38 @@ def load_model_and_metadata():
 # Initialize model on module load
 load_model_and_metadata()
 
+# ── Initialize SQLite Database & Seed Default Admin ─────────────────────────
+init_db_schema()
+try:
+    with SessionLocal() as db_session:
+        seed_default_admin(db_session)
+except Exception as e:
+    print(f"[Warning] Database initialization notice: {e}")
+
 # ── FastAPI App Setup ───────────────────────────────────────────────────────
 app = FastAPI(
     title="CareGrid Clinical Decision Support API",
-    description="API for 30-Day Hospital Readmission Risk Prediction & Clinical Severity RAG",
-    version="2.0.0",
+    description="API for 30-Day Hospital Readmission Risk Prediction, XAI Explainability & Staff Auth",
+    version="2.1.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins (e.g. Vite on localhost:5173)
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "*",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Mount Authentication & Admin Routers ────────────────────────────────────
+app.include_router(auth_router)
+app.include_router(admin_router)
 
 
 # ── Pydantic Request & Response Schemas ─────────────────────────────────────
@@ -533,7 +563,10 @@ def get_metadata():
 
 # ── Readmission Risk Prediction Endpoint ────────────────────────────────────
 @app.post("/predict", response_model=PredictionResponse, summary="Predict 30-Day Readmission Risk")
-def predict_readmission(patient: PatientInput):
+def predict_readmission(
+    patient: PatientInput,
+    current_user: User = Depends(get_current_user),
+):
     global _model
     if _model is None:
         load_model_and_metadata()
@@ -679,9 +712,12 @@ def predict_readmission(patient: PatientInput):
         )
 
 
-# ── PDF Upload & Clinical Severity RAG Endpoint ─────────────────────────────
-@app.post("/upload-pdf", summary="Upload & Analyze Clinical PDF Report")
-async def upload_pdf(file: UploadFile = File(...)):
+# ── PDF Upload & Patient Intake Auto-Fill Endpoint ──────────────────────────
+@app.post("/upload-pdf", summary="Upload PDF & Auto-Extract Patient Intake Fields")
+async def upload_pdf(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -700,81 +736,38 @@ async def upload_pdf(file: UploadFile = File(...)):
     # Parse text with PyMuPDF
     extracted_text = ""
     try:
-        import fitz
-        doc = fitz.open(saved_path)
+        try:
+            import pymupdf as fitz_mod
+            doc = fitz_mod.open(saved_path)
+        except (ImportError, AttributeError):
+            import fitz as fitz_mod
+            doc = fitz_mod.open(saved_path)
+
         extracted_text = "\n".join([page.get_text() for page in doc])
         doc.close()
     except Exception as e:
         extracted_text = f"Could not extract text: {e}"
 
-    # Attempt Clinical Severity RAG & LLM Analysis
-    rag_assessment = None
-    retrieved_chunks = []
-    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    # Extract structured patient encounter parameters and verify medical report authenticity
+    extract_res = extract_patient_data_from_text(extracted_text)
 
-    try:
-        try:
-            from backend.rag.rag.rag_pipeline import RAGPipeline
-            from backend.rag.llm.severity_analyzer import SeverityAnalyzer
-        except (ImportError, ModuleNotFoundError):
-            try:
-                from rag.rag.rag_pipeline import RAGPipeline
-                from rag.llm.severity_analyzer import SeverityAnalyzer
-            except (ImportError, ModuleNotFoundError):
-                from rag.rag_pipeline import RAGPipeline
-                from llm.severity_analyzer import SeverityAnalyzer
-
-        rag = RAGPipeline()
-        if rag.is_knowledge_base_ready() and extracted_text.strip():
-            retrieved = rag.run_query(extracted_text, top_k=4)
-            retrieved_chunks = [
-                {
-                    "source": chunk.source_doc,
-                    "similarity": round(chunk.similarity_score, 3),
-                    "text": chunk.text[:300] + "..." if len(chunk.text) > 300 else chunk.text,
-                }
-                for chunk in retrieved
-            ]
-
-            if gemini_key:
-                analyzer = SeverityAnalyzer()
-                result = analyzer.analyze(extracted_text, retrieved)
-                rag_assessment = {
-                    "severity_score": result.severity_score,
-                    "severity_level": result.severity_level,
-                    "key_findings": result.key_findings,
-                    "evidence": result.evidence,
-                    "summary": result.summary,
-                }
-    except Exception as e:
-        print(f"[Info] RAG analysis note: {e}")
-
-    # Fallback summary if Gemini key not yet configured
-    if rag_assessment is None and extracted_text.strip():
-        rag_assessment = {
-            "severity_score": 5,
-            "severity_level": "Moderate",
-            "key_findings": [
-                "Clinical lab report text successfully extracted from uploaded PDF.",
-                "To enable automatic LLM clinical severity scoring, set GEMINI_API_KEY in .env.",
-            ],
-            "evidence": [
-                f"Extracted {len(extracted_text):,} characters from {file.filename}."
-            ],
-            "summary": (
-                "Document parsed successfully. Add your Gemini API key in the root .env file "
-                "to activate multi-guideline evidence retrieval and clinical severity scoring."
-            ),
-        }
+    is_medical = extract_res.get("is_medical_report", False)
 
     return {
-        "success": True,
-        "message": f"Successfully uploaded and analyzed {file.filename}",
+        "success": is_medical,
+        "is_medical_report": is_medical,
+        "is_partial": extract_res.get("is_partial", False),
+        "error_type": extract_res.get("error_type"),
+        "message": extract_res.get("status_message", f"Processed {file.filename}"),
         "filename": file.filename,
         "saved_as": saved_filename,
-        "extracted_text_preview": extracted_text[:500] + ("..." if len(extracted_text) > 500 else ""),
-        "severity_assessment": rag_assessment,
-        "retrieved_guidelines": retrieved_chunks,
+        "extracted_text_preview": extracted_text[:400] + ("..." if len(extracted_text) > 400 else ""),
+        "extracted_patient": extract_res.get("extracted_patient", {}),
+        "extracted_fields_count": extract_res.get("extracted_fields_count", 0),
+        "extracted_fields_list": extract_res.get("extracted_fields_list", []),
+        "missing_fields_count": extract_res.get("missing_fields_count", 0),
+        "missing_fields_list": extract_res.get("missing_fields_list", []),
+        "missing_fields_labels": extract_res.get("missing_fields_labels", []),
     }
 
 

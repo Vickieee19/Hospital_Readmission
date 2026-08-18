@@ -3,6 +3,8 @@ import {
   Activity,
   Sparkles,
   ClipboardList,
+  CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react'
 import {
   AGE_OPTIONS,
@@ -13,24 +15,51 @@ import {
   A1C_OPTIONS,
 } from '../constants/patient'
 
-function FormField({ number, label, helpText, children }) {
+function FormField({ number, label, helpText, isAutoFilled, isMissing, children }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <label className="text-xs font-semibold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-          <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-slate-100 border border-slate-300 text-[10px] font-mono text-slate-700">
+        <label className="text-xs font-semibold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 flex-wrap">
+          <span
+            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-mono ${
+              isAutoFilled
+                ? 'bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold'
+                : isMissing
+                ? 'bg-amber-100 border border-amber-300 text-amber-800 font-bold'
+                : 'bg-slate-100 border border-slate-300 text-slate-700'
+            }`}
+          >
             {number}
           </span>
           <span>{label}</span>
+          {isAutoFilled && (
+            <span className="rounded bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 tracking-tight">
+              ✓ Auto-filled
+            </span>
+          )}
+          {isMissing && (
+            <span className="rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 tracking-tight">
+              ⚠️ Needs Input
+            </span>
+          )}
         </label>
         {helpText && <span className="text-[10px] text-slate-500">{helpText}</span>}
       </div>
-      {children}
+      <div className={isMissing ? 'rounded-xl ring-2 ring-amber-300/80 ring-offset-1' : ''}>
+        {children}
+      </div>
     </div>
   )
 }
 
-export default function PatientForm({ formData, setFormData, onSubmit, isLoading }) {
+export default function PatientForm({
+  formData,
+  setFormData,
+  onSubmit,
+  isLoading,
+  extractedFields = [],
+  missingFields = [],
+}) {
   const handleChange = (key, value) => {
     setFormData((prev) => ({ ...prev, [key]: value }))
   }
@@ -40,7 +69,6 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
       handleChange(key, '')
       return
     }
-    // Parse integer, automatically converting e.g. "060" -> 60
     const parsed = parseInt(rawValue, 10)
     handleChange(key, isNaN(parsed) ? '' : parsed)
   }
@@ -49,39 +77,46 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
     e.target.select()
   }
 
+  const isFilled = (k) => extractedFields.includes(k)
+  const isReq = (k) => missingFields.includes(k)
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm space-y-6">
-      <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-        <div className="flex items-center gap-2">
-          <ClipboardList className="h-5 w-5 text-blue-600" />
-          <h3 className="text-lg font-bold text-slate-900">
-            Clinical Intake
-          </h3>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200 pb-4">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 border border-blue-100 text-blue-600 shadow-xs">
+            <ClipboardList className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Clinical Intake</h3>
+            <p className="text-xs text-slate-500">
+              16 standard clinical parameters for 30-day readmission risk stratification.
+            </p>
+          </div>
         </div>
+
+        {extractedFields.length > 0 && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-1 font-semibold text-emerald-800">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+              <span>{extractedFields.length} Auto-filled</span>
+            </span>
+            {missingFields.length > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1 font-semibold text-amber-800">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                <span>{missingFields.length} Manual Input</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
           16 ENCOUNTER INPUT FIELDS IN EXACT DATASET CSV COLUMN ORDER:
-          1. age
-          2. time_in_hospital
-          3. n_lab_procedures
-          4. n_procedures
-          5. n_medications
-          6. n_outpatient
-          7. n_inpatient
-          8. n_emergency
-          9. medical_specialty
-          10. diag_1
-          11. diag_2
-          12. diag_3
-          13. glucose_test
-          14. A1Ctest
-          15. change
-          16. diabetes_med
       ───────────────────────────────────────────────────────────── */}
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {/* 1. age */}
-        <FormField number="1" label="Age" helpText="Age bracket">
+        <FormField number="1" label="Age" helpText="Age bracket" isAutoFilled={isFilled('age')} isMissing={isReq('age')}>
           <select
             value={formData.age}
             onChange={(e) => handleChange('age', e.target.value)}
@@ -96,7 +131,7 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
         </FormField>
 
         {/* 2. time_in_hospital */}
-        <FormField number="2" label="Time in Hospital" helpText="Length of stay (days)">
+        <FormField number="2" label="Time in Hospital" helpText="Length of stay (days)" isAutoFilled={isFilled('time_in_hospital')} isMissing={isReq('time_in_hospital')}>
           <input
             type="number"
             min="1"
@@ -110,7 +145,7 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
         </FormField>
 
         {/* 3. n_lab_procedures */}
-        <FormField number="3" label="N Lab Procedures" helpText="Lab tests performed">
+        <FormField number="3" label="N Lab Procedures" helpText="Lab tests performed" isAutoFilled={isFilled('n_lab_procedures')} isMissing={isReq('n_lab_procedures')}>
           <input
             type="number"
             min="0"
@@ -124,11 +159,11 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
         </FormField>
 
         {/* 4. n_procedures */}
-        <FormField number="4" label="N Procedures" helpText="Inpatient procedures">
+        <FormField number="4" label="N Procedures" helpText="Inpatient procedures" isAutoFilled={isFilled('n_procedures')} isMissing={isReq('n_procedures')}>
           <input
             type="number"
             min="0"
-            max="15"
+            max="10"
             step="1"
             value={formData.n_procedures ?? ''}
             onFocus={handleFocus}
@@ -138,11 +173,11 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
         </FormField>
 
         {/* 5. n_medications */}
-        <FormField number="5" label="N Medications" helpText="Prescribed medications">
+        <FormField number="5" label="N Medications" helpText="Active prescribed meds" isAutoFilled={isFilled('n_medications')} isMissing={isReq('n_medications')}>
           <input
             type="number"
             min="1"
-            max="100"
+            max="80"
             step="1"
             value={formData.n_medications ?? ''}
             onFocus={handleFocus}
@@ -152,11 +187,11 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
         </FormField>
 
         {/* 6. n_outpatient */}
-        <FormField number="6" label="N Outpatient" helpText="Past 1 year visits">
+        <FormField number="6" label="N Outpatient" helpText="Prior outpatient visits" isAutoFilled={isFilled('n_outpatient')} isMissing={isReq('n_outpatient')}>
           <input
             type="number"
             min="0"
-            max="30"
+            max="40"
             step="1"
             value={formData.n_outpatient ?? ''}
             onFocus={handleFocus}
@@ -166,11 +201,11 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
         </FormField>
 
         {/* 7. n_inpatient */}
-        <FormField number="7" label="N Inpatient" helpText="Past 1 year admissions">
+        <FormField number="7" label="N Inpatient" helpText="Prior admissions (yr)" isAutoFilled={isFilled('n_inpatient')} isMissing={isReq('n_inpatient')}>
           <input
             type="number"
             min="0"
-            max="30"
+            max="25"
             step="1"
             value={formData.n_inpatient ?? ''}
             onFocus={handleFocus}
@@ -180,7 +215,7 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
         </FormField>
 
         {/* 8. n_emergency */}
-        <FormField number="8" label="N Emergency" helpText="Past 1 year ER visits">
+        <FormField number="8" label="N Emergency" helpText="Prior ER encounters" isAutoFilled={isFilled('n_emergency')} isMissing={isReq('n_emergency')}>
           <input
             type="number"
             min="0"
@@ -194,7 +229,7 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
         </FormField>
 
         {/* 9. medical_specialty */}
-        <FormField number="9" label="Medical Specialty" helpText="Admitting physician">
+        <FormField number="9" label="Medical Specialty" helpText="Admitting specialty" isAutoFilled={isFilled('medical_specialty')} isMissing={isReq('medical_specialty')}>
           <select
             value={formData.medical_specialty}
             onChange={(e) => handleChange('medical_specialty', e.target.value)}
@@ -209,7 +244,7 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
         </FormField>
 
         {/* 10. diag_1 */}
-        <FormField number="10" label="Diagnosis 1" helpText="Primary diagnosis">
+        <FormField number="10" label="Primary Diagnosis (diag_1)" helpText="Principal condition" isAutoFilled={isFilled('diag_1')} isMissing={isReq('diag_1')}>
           <select
             value={formData.diag_1}
             onChange={(e) => handleChange('diag_1', e.target.value)}
@@ -224,7 +259,7 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
         </FormField>
 
         {/* 11. diag_2 */}
-        <FormField number="11" label="Diagnosis 2" helpText="Secondary diagnosis">
+        <FormField number="11" label="Secondary Diagnosis (diag_2)" helpText="Secondary condition" isAutoFilled={isFilled('diag_2')} isMissing={isReq('diag_2')}>
           <select
             value={formData.diag_2}
             onChange={(e) => handleChange('diag_2', e.target.value)}
@@ -239,7 +274,7 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
         </FormField>
 
         {/* 12. diag_3 */}
-        <FormField number="12" label="Diagnosis 3" helpText="Tertiary diagnosis">
+        <FormField number="12" label="Tertiary Diagnosis (diag_3)" helpText="Tertiary condition" isAutoFilled={isFilled('diag_3')} isMissing={isReq('diag_3')}>
           <select
             value={formData.diag_3}
             onChange={(e) => handleChange('diag_3', e.target.value)}
@@ -254,7 +289,7 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
         </FormField>
 
         {/* 13. glucose_test */}
-        <FormField number="13" label="Glucose Test" helpText="Serum glucose result">
+        <FormField number="13" label="Glucose Test" helpText="Fasting blood sugar test" isAutoFilled={isFilled('glucose_test')} isMissing={isReq('glucose_test')}>
           <select
             value={formData.glucose_test}
             onChange={(e) => handleChange('glucose_test', e.target.value)}
@@ -269,7 +304,7 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
         </FormField>
 
         {/* 14. A1Ctest */}
-        <FormField number="14" label="A1C Test" helpText="HbA1c test result">
+        <FormField number="14" label="A1C Test" helpText="HbA1c test result" isAutoFilled={isFilled('A1Ctest')} isMissing={isReq('A1Ctest')}>
           <select
             value={formData.A1Ctest}
             onChange={(e) => handleChange('A1Ctest', e.target.value)}
@@ -284,7 +319,7 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
         </FormField>
 
         {/* 15. change */}
-        <FormField number="15" label="Change" helpText="Medication changed?">
+        <FormField number="15" label="Medication Change" helpText="Dosage/regimen adjusted" isAutoFilled={isFilled('change')} isMissing={isReq('change')}>
           <select
             value={formData.change}
             onChange={(e) => handleChange('change', e.target.value)}
@@ -299,7 +334,7 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
         </FormField>
 
         {/* 16. diabetes_med */}
-        <FormField number="16" label="Diabetes Med" helpText="Prescribed diabetes med?">
+        <FormField number="16" label="Diabetes Med" helpText="Prescribed diabetes meds" isAutoFilled={isFilled('diabetes_med')} isMissing={isReq('diabetes_med')}>
           <select
             value={formData.diabetes_med}
             onChange={(e) => handleChange('diabetes_med', e.target.value)}
@@ -314,23 +349,29 @@ export default function PatientForm({ formData, setFormData, onSubmit, isLoading
         </FormField>
       </div>
 
-      {/* Form Submission Action Button */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 pt-4 border-t border-slate-200">
+      {/* ─────────────────────────────────────────────────────────────
+          SUBMIT ACTION BUTTON
+      ───────────────────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4 border-t border-slate-200">
+        <p className="text-xs text-slate-500">
+          All 16 parameters are processed through the calibrated ensemble pipeline.
+        </p>
+
         <button
           type="button"
           onClick={onSubmit}
           disabled={isLoading}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-7 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-xs transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 cursor-pointer"
         >
           {isLoading ? (
             <>
-              <Sparkles className="h-4 w-4 animate-spin" />
-              <span>Evaluating Encounter...</span>
+              <Activity className="h-4 w-4 animate-spin" />
+              <span>Analyzing Risk & SHAP Reasoning...</span>
             </>
           ) : (
             <>
-              <Activity className="h-4 w-4" />
-              <span>Assess Readmission Risk</span>
+              <Sparkles className="h-4 w-4" />
+              <span>Predict Readmission Risk</span>
             </>
           )}
         </button>

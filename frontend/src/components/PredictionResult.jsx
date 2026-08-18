@@ -114,6 +114,10 @@ export default function PredictionResult({ result }) {
     window.print()
   }
 
+  const isBinaryReadmitted = result.prediction === 1 || Number(result.probability || 0) >= Number(result.threshold || 0.5227)
+  const binaryVerdict = isBinaryReadmitted ? 'YES' : 'NO'
+  const thresholdPct = ((result.threshold || 0.5227) * 100).toFixed(1)
+
   return (
     <div className="space-y-8 text-slate-900 print:text-black">
       {/* ─────────────────────────────────────────────────────────────
@@ -147,7 +151,7 @@ export default function PredictionResult({ result }) {
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] items-stretch">
         {/* Left Column: Verdict Banner */}
         <div
-          className={`flex flex-col justify-center rounded-2xl p-6 sm:p-7 border transition-all shadow-sm ${
+          className={`flex flex-col justify-between rounded-2xl p-6 sm:p-7 border transition-all shadow-sm ${
             isHighRisk
               ? 'border-rose-200 bg-[#fff5f5] text-rose-950'
               : isModerateRisk
@@ -155,7 +159,7 @@ export default function PredictionResult({ result }) {
               : 'border-emerald-200 bg-[#f0fdf4] text-emerald-950'
           }`}
         >
-          <div>
+          <div className="space-y-4">
             {/* Risk Title with Clinical SVG Indicator Icon */}
             <div className="flex items-center gap-3">
               <div
@@ -188,30 +192,35 @@ export default function PredictionResult({ result }) {
               </h3>
             </div>
 
-            {/* Probability & Action Required Subtitle */}
-            <div className="mt-3 text-sm font-semibold tracking-wide text-slate-800">
-              Predicted Probability: <span className="font-mono text-base font-bold text-slate-900">{probabilityPct}%</span>
-              {' • '}
-              <span
-                className={`font-semibold ${
-                  isHighRisk ? 'text-rose-700' : isModerateRisk ? 'text-amber-700' : 'text-emerald-700'
+            {/* Prominent Binary YES / NO Prediction Badge */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-extrabold shadow-sm ${
+                  isBinaryReadmitted
+                    ? 'bg-rose-600 text-white'
+                    : 'bg-emerald-600 text-white'
                 }`}
               >
-                {isHighRisk
-                  ? 'Action Required'
-                  : isModerateRisk
-                  ? 'Enhanced Follow-Up Advised'
-                  : 'Standard Discharge Safe'}
+                <span>30-Day Readmission Predicted:</span>
+                <span className="rounded-md bg-white/25 px-2.5 py-0.5 text-base font-black tracking-wider">
+                  {binaryVerdict}
+                </span>
+              </div>
+
+              <span className="inline-flex items-center rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-xs font-semibold text-slate-800">
+                Probability: <strong className="ml-1 font-mono text-slate-900">{probabilityPct}%</strong>
+                <span className="text-slate-400 mx-1.5">•</span>
+                Cutoff: <strong className="ml-1 font-mono text-slate-900">{thresholdPct}%</strong>
               </span>
             </div>
 
             {/* Clinical Description */}
-            <p className="mt-3 text-sm leading-relaxed text-slate-700">
+            <p className="text-sm leading-relaxed text-slate-700 pt-1">
               {isHighRisk
-                ? 'This patient has a high likelihood of unplanned 30-day hospital readmission. Proactive discharge interventions must be implemented before discharge.'
+                ? 'This patient has a high likelihood of unplanned 30-day hospital readmission (Predicted: YES). Proactive discharge interventions must be implemented before discharge.'
                 : isModerateRisk
                 ? 'This patient exhibits moderate vulnerability for hospital recidivism. Targeted post-discharge follow-up and medication review recommended.'
-                : 'This patient has a low probability of 30-day readmission. Standard outpatient discharge protocols and routine check-ins are appropriate.'}
+                : 'This patient has a low probability of 30-day readmission (Predicted: NO). Standard outpatient discharge protocols and routine check-ins are appropriate.'}
             </p>
           </div>
         </div>
@@ -222,7 +231,78 @@ export default function PredictionResult({ result }) {
             probability={result.probability || 0}
             threshold={result.threshold || 0.5227}
             riskLevel={result.risk_level || 'Moderate'}
+            predictedYesNo={binaryVerdict}
           />
+        </div>
+      </div>
+
+      {/* ─────────────────────────────────────────────────────────────
+          2.1 SUMMARY KPI METRIC STRIP (Binary Outcome, Score, Cutoff)
+      ───────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {/* Metric 1: Binary Verdict */}
+        <div
+          className={`rounded-2xl border p-4 shadow-2xs flex flex-col justify-between ${
+            isBinaryReadmitted
+              ? 'border-rose-200 bg-rose-50/60'
+              : 'border-emerald-200 bg-emerald-50/60'
+          }`}
+        >
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Binary Prediction
+          </span>
+          <div className="my-1 flex items-center gap-2">
+            <span
+              className={`text-2xl font-black ${
+                isBinaryReadmitted ? 'text-rose-700' : 'text-emerald-700'
+              }`}
+            >
+              {binaryVerdict}
+            </span>
+            <span className="text-xs font-semibold text-slate-600">
+              ({isBinaryReadmitted ? 'Readmission Likely' : 'Readmission Unlikely'})
+            </span>
+          </div>
+          <span className="text-[10px] text-slate-500">
+            {isBinaryReadmitted ? 'Probability >= Cutoff' : 'Probability < Cutoff'}
+          </span>
+        </div>
+
+        {/* Metric 2: Predicted Probability */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs flex flex-col justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Predicted Probability
+          </span>
+          <div className="my-1 font-mono text-2xl font-black text-slate-900">
+            {probabilityPct}%
+          </div>
+          <span className="text-[10px] text-slate-500">Calibrated Model Score</span>
+        </div>
+
+        {/* Metric 3: Decision Threshold */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs flex flex-col justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Decision Threshold
+          </span>
+          <div className="my-1 font-mono text-2xl font-black text-slate-900">
+            {thresholdPct}%
+          </div>
+          <span className="text-[10px] text-slate-500">Clinical Classification Cutoff</span>
+        </div>
+
+        {/* Metric 4: Risk Tier */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs flex flex-col justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Acuity Stratification
+          </span>
+          <div
+            className={`my-1 text-2xl font-black ${
+              isHighRisk ? 'text-rose-700' : isModerateRisk ? 'text-amber-700' : 'text-emerald-700'
+            }`}
+          >
+            {result.risk_level || (isHighRisk ? 'High' : 'Low')} Risk
+          </div>
+          <span className="text-[10px] text-slate-500">Population Risk Category</span>
         </div>
       </div>
 

@@ -6,9 +6,15 @@ import React from 'react'
  * radial tick markers (0%, 20%, 40%, 60%, 80%, 100%), calibrated indicator needle,
  * large center percentage, and clinical cutoff threshold guide.
  */
-export default function RiskGauge({ probability = 0, threshold = 0.5227, riskLevel = 'Moderate' }) {
+export default function RiskGauge({
+  probability = 0,
+  threshold = 0.5227,
+  riskLevel = 'Moderate',
+  predictedYesNo = null,
+}) {
   const percentage = Math.min(100, Math.max(0, Number((probability * 100).toFixed(1))))
   const thresholdPct = Number((threshold * 100).toFixed(1))
+  const isYes = predictedYesNo === 'YES' || percentage >= thresholdPct
 
   // Semicircle geometry
   const width = 360
@@ -155,19 +161,27 @@ export default function RiskGauge({ probability = 0, threshold = 0.5227, riskLev
           <circle cx={cx} cy={cy} r="6" fill="#0f172a" stroke="#ffffff" strokeWidth="2" />
         </svg>
 
-        {/* Center Percentage Display */}
-        <div className="absolute inset-x-0 bottom-3 flex flex-col items-center justify-center">
+        {/* Center Percentage Display & Binary YES/NO Tag */}
+        <div className="absolute inset-x-0 bottom-2 flex flex-col items-center justify-center space-y-0.5">
           <span
             className="text-4xl sm:text-5xl font-extrabold tracking-tight font-mono transition-colors duration-300"
             style={{ color: getRiskColor() }}
           >
             {percentage}%
           </span>
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-extrabold uppercase tracking-wider ${
+              isYes ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+            }`}
+          >
+            <span>Readmission:</span>
+            <span className="font-black underline">{isYes ? 'YES' : 'NO'}</span>
+          </span>
         </div>
       </div>
 
       {/* Threshold and Zone Legend matching reference */}
-      <div className="mt-2 text-[11px] font-medium text-slate-500">
+      <div className="mt-3 text-[11px] font-medium text-slate-500">
         Green: Low (&lt;35%) • Yellow: Moderate (35-{thresholdPct}%) • Red: High Risk (&ge;{thresholdPct}%)
       </div>
     </div>
