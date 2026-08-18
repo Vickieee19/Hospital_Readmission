@@ -1,4 +1,4 @@
-"""
+    """
 backend/main.py
 ───────────────
 CareGrid FastAPI Backend Server
@@ -97,28 +97,29 @@ app.add_middleware(
 
 # ── Pydantic Request & Response Schemas ─────────────────────────────────────
 class PatientInput(BaseModel):
-    age: str = Field(default="[70-80)", example="[70-80)")
-    time_in_hospital: int = Field(default=5, ge=0, example=5)
-    n_lab_procedures: int = Field(default=40, ge=0, example=40)
-    n_procedures: int = Field(default=2, ge=0, example=2)
-    n_medications: int = Field(default=15, ge=0, example=15)
-    n_outpatient: int = Field(default=0, ge=0, example=0)
-    n_inpatient: int = Field(default=1, ge=0, example=1)
-    n_emergency: int = Field(default=0, ge=0, example=0)
-    medical_specialty: str = Field(default="InternalMedicine", example="InternalMedicine")
-    diag_1: str = Field(default="Circulatory", example="Circulatory")
-    diag_2: str = Field(default="Diabetes", example="Diabetes")
-    diag_3: str = Field(default="Other", example="Other")
-    glucose_test: str = Field(default="no", example="no")
-    A1Ctest: str = Field(default="no", example="no")
-    change: str = Field(default="yes", example="yes")
-    diabetes_med: str = Field(default="yes", example="yes")
-    threshold: float | None = Field(default=None, ge=0.0, le=1.0, example=0.52)
+    age: str = Field(default="[70-80)", json_schema_extra={"example": "[70-80)"})
+    time_in_hospital: int = Field(default=5, ge=0, json_schema_extra={"example": 5})
+    n_lab_procedures: int = Field(default=40, ge=0, json_schema_extra={"example": 40})
+    n_procedures: int = Field(default=2, ge=0, json_schema_extra={"example": 2})
+    n_medications: int = Field(default=15, ge=0, json_schema_extra={"example": 15})
+    n_outpatient: int = Field(default=0, ge=0, json_schema_extra={"example": 0})
+    n_inpatient: int = Field(default=1, ge=0, json_schema_extra={"example": 1})
+    n_emergency: int = Field(default=0, ge=0, json_schema_extra={"example": 0})
+    medical_specialty: str = Field(default="InternalMedicine", json_schema_extra={"example": "InternalMedicine"})
+    diag_1: str = Field(default="Circulatory", json_schema_extra={"example": "Circulatory"})
+    diag_2: str = Field(default="Diabetes", json_schema_extra={"example": "Diabetes"})
+    diag_3: str = Field(default="Other", json_schema_extra={"example": "Other"})
+    glucose_test: str = Field(default="no", json_schema_extra={"example": "no"})
+    A1Ctest: str = Field(default="no", json_schema_extra={"example": "no"})
+    change: str = Field(default="yes", json_schema_extra={"example": "yes"})
+    diabetes_med: str = Field(default="yes", json_schema_extra={"example": "yes"})
+    threshold: float | None = Field(default=None, ge=0.0, le=1.0, json_schema_extra={"example": 0.52})
 
 
 class FeatureImpact(BaseModel):
     feature: str
     impact: float
+    raw_feature: str | None = None
 
 
 class PreventionProtocol(BaseModel):
@@ -129,7 +130,23 @@ class PreventionProtocol(BaseModel):
 
 class ContributingFactor(BaseModel):
     is_risk: bool
+    title: str | None = None
     text: str
+
+
+class DomainScore(BaseModel):
+    domain: str
+    score: int
+    full_mark: int = 100
+    risk_level: str
+
+
+class BenchmarkMetric(BaseModel):
+    metric: str
+    patient_value: float
+    benchmark_median: float
+    high_risk_cutoff: float
+    unit: str
 
 
 class PredictionResponse(BaseModel):
@@ -142,7 +159,72 @@ class PredictionResponse(BaseModel):
     top_decreasing_risk: list[dict[str, Any]]
     contributing_factors: list[ContributingFactor]
     prevention_protocols: list[PreventionProtocol]
+    domain_scores: list[DomainScore]
+    benchmarks: list[BenchmarkMetric]
     disclaimer: str
+
+
+# ── Feature Label Dictionary ───────────────────────────────────────────────
+FEATURE_NAME_MAP: dict[str, str] = {
+    "total_prior_visits": "Total Prior Inpatient & ER Visits",
+    "had_prior_inpatient": "Prior Inpatient Admission History",
+    "had_prior_emergency": "Prior Emergency Encounter History",
+    "n_inpatient": "Prior Inpatient Admissions",
+    "n_emergency": "Prior Emergency Room Visits",
+    "n_outpatient": "Prior Outpatient Visits",
+    "n_medications": "Active Prescribed Medications",
+    "time_in_hospital": "Hospital Stay Length (Days)",
+    "n_lab_procedures": "Lab Procedures Performed",
+    "n_procedures": "Clinical Inpatient Procedures",
+    "lab_to_med_ratio": "Lab-to-Medication Ratio",
+    "labs_per_day": "Daily Lab Intensity",
+    "meds_per_day": "Daily Medication Rate",
+    "procedures_per_day": "Procedures per Inpatient Day",
+    "utilisation_intensity": "Healthcare Utilization Intensity",
+    "long_stay_flag": "Extended Stay Flag (≥7 Days)",
+    "high_polypharmacy_flag": "High Polypharmacy Flag (≥20 Meds)",
+    "polypharmacy_flag": "Polypharmacy Flag (≥10 Meds)",
+    "age": "Patient Age Bracket",
+    "medical_specialty_InternalMedicine": "Specialty: Internal Medicine",
+    "medical_specialty_Cardiology": "Specialty: Cardiology",
+    "medical_specialty_Family/GeneralPractice": "Specialty: Family Practice",
+    "medical_specialty_Surgery": "Specialty: General Surgery",
+    "medical_specialty_Missing": "Specialty: Unspecified",
+    "medical_specialty_Other": "Specialty: Other Specialty",
+    "diag_1_Circulatory": "Primary Diagnosis: Circulatory / Cardiac",
+    "diag_1_Diabetes": "Primary Diagnosis: Diabetes",
+    "diag_1_Respiratory": "Primary Diagnosis: Respiratory Illness",
+    "diag_1_Digestive": "Primary Diagnosis: Digestive Condition",
+    "diag_1_Injury": "Primary Diagnosis: Injury / Trauma",
+    "diag_1_Other": "Primary Diagnosis: Other Condition",
+    "diag_2_Diabetes": "Secondary Diagnosis: Diabetes",
+    "diag_2_Circulatory": "Secondary Diagnosis: Circulatory",
+    "diag_2_Respiratory": "Secondary Diagnosis: Respiratory",
+    "diag_2_Digestive": "Secondary Diagnosis: Digestive",
+    "diag_2_Injury": "Secondary Diagnosis: Injury",
+    "diag_2_Other": "Secondary Diagnosis: Other Condition",
+    "diag_3_Diabetes": "Tertiary Diagnosis: Diabetes",
+    "diag_3_Circulatory": "Tertiary Diagnosis: Circulatory",
+    "diag_3_Respiratory": "Tertiary Diagnosis: Respiratory",
+    "diag_3_Digestive": "Tertiary Diagnosis: Digestive",
+    "diag_3_Injury": "Tertiary Diagnosis: Injury",
+    "diag_3_Other": "Tertiary Diagnosis: Other Condition",
+    "diabetes_med_yes": "Prescribed Diabetes Medication",
+    "diabetes_med_no": "No Diabetes Medication",
+    "change_yes": "Medication Regimen Modified",
+    "change_no": "No Medication Change",
+    "glucose_test_high": "Glucose Test: High (>200 mg/dL)",
+    "glucose_test_normal": "Glucose Test: Normal",
+    "glucose_test_no": "Glucose Test: Not Performed",
+    "A1Ctest_high": "HbA1c Test: High (>8%)",
+    "A1Ctest_normal": "HbA1c Test: Normal (<7%)",
+    "A1Ctest_no": "HbA1c Test: Not Performed",
+}
+
+
+def clean_feature_label(raw_feat: str) -> str:
+    cleaned = raw_feat.replace("num__", "").replace("cat__", "").replace("age__", "")
+    return FEATURE_NAME_MAP.get(cleaned, cleaned.replace("_", " ").title())
 
 
 # ── Clinical Prevention Protocols Generator ─────────────────────────────────
@@ -181,7 +263,6 @@ def get_prevention_protocols() -> list[PreventionProtocol]:
     ]
 
 
-
 def derive_contributing_factors(patient: dict[str, Any]) -> list[ContributingFactor]:
     factors: list[ContributingFactor] = []
 
@@ -191,18 +272,23 @@ def derive_contributing_factors(patient: dict[str, Any]) -> list[ContributingFac
     time_in_hospital = int(patient.get("time_in_hospital", 0))
     age = str(patient.get("age", ""))
     diag_1 = str(patient.get("diag_1", ""))
+    change = str(patient.get("change", "no")).lower()
+    glucose_test = str(patient.get("glucose_test", "no")).lower()
+    a1c_test = str(patient.get("A1Ctest", "no")).lower()
 
     if n_inpatient >= 1:
         factors.append(
             ContributingFactor(
                 is_risk=True,
-                text=f"Prior Inpatient Admissions: {n_inpatient} hospital stay(s) in past year is a primary driver of readmission.",
+                title="Prior Inpatient Admissions",
+                text=f"Prior Inpatient Admissions: {n_inpatient} previous hospital stay(s) in the past year is a primary driver of readmission.",
             )
         )
     if n_emergency >= 1:
         factors.append(
             ContributingFactor(
                 is_risk=True,
+                title="Prior Emergency Visits",
                 text=f"Prior Emergency Visits: {n_emergency} ER encounter(s) indicates frequent acute complications.",
             )
         )
@@ -210,27 +296,39 @@ def derive_contributing_factors(patient: dict[str, Any]) -> list[ContributingFac
         factors.append(
             ContributingFactor(
                 is_risk=True,
-                text=f"High Medication Burden: {n_medications} active medications significantly elevates polypharmacy risks.",
+                title="High Medication Burden",
+                text=f"High Medication Burden: {n_medications} active medications significantly elevates polypharmacy & adherence risks.",
             )
         )
     elif n_medications >= 12:
         factors.append(
             ContributingFactor(
                 is_risk=True,
-                text=f"Moderate Medication Count: {n_medications} active prescribed medications.",
+                title="Moderate Medication Burden",
+                text=f"Moderate Medication Burden: {n_medications} active prescribed medications.",
             )
         )
     if time_in_hospital >= 6:
         factors.append(
             ContributingFactor(
                 is_risk=True,
-                text=f"Extended Hospital Stay: {time_in_hospital} days in hospital reflects severe illness condition.",
+                title="Extended Length of Stay",
+                text=f"Extended Length of Stay: {time_in_hospital} days in hospital reflects severe illness severity.",
+            )
+        )
+    elif time_in_hospital >= 4:
+        factors.append(
+            ContributingFactor(
+                is_risk=True,
+                title="Moderate Hospital Stay",
+                text=f"Moderate Hospital Stay: {time_in_hospital} days in hospital.",
             )
         )
     if age in ["[70-80)", "[80-90)", "[90-100)"]:
         factors.append(
             ContributingFactor(
                 is_risk=True,
+                title="Elderly Age Bracket",
                 text=f"Elderly Age Bracket: {age} indicates higher physical vulnerability post-discharge.",
             )
         )
@@ -238,31 +336,117 @@ def derive_contributing_factors(patient: dict[str, Any]) -> list[ContributingFac
         factors.append(
             ContributingFactor(
                 is_risk=True,
+                title="Primary Diagnosis",
                 text=f"Primary Diagnosis: {diag_1} is a chronic condition associated with frequent recidivism.",
             )
         )
+    if change == "yes":
+        factors.append(
+            ContributingFactor(
+                is_risk=True,
+                title="Medication Regimen Modification",
+                text="Medication Regimen Modification: Dosage or active drugs adjusted during stay, requiring post-discharge titration.",
+            )
+        )
+    if glucose_test == "high" or a1c_test == "high":
+        factors.append(
+            ContributingFactor(
+                is_risk=True,
+                title="Elevated Glycemic Lab Values",
+                text="Elevated Glycemic Lab Values: Abnormal glucose/HbA1c test result warrants close outpatient endocrinology follow-up.",
+            )
+        )
 
+    # Protective factors if low risk or minimal utilization
     if not factors:
         factors.append(
             ContributingFactor(
                 is_risk=False,
+                title="Low Hospital Utilization",
                 text="Low Hospital Utilization: 0 prior inpatient or emergency admissions in past year.",
             )
         )
         factors.append(
             ContributingFactor(
                 is_risk=False,
+                title="Short Hospital Stay",
                 text=f"Short Hospital Stay: Discharged after only {time_in_hospital} day(s).",
             )
         )
         factors.append(
             ContributingFactor(
                 is_risk=False,
+                title="Low Medication Count",
                 text=f"Low Medication Count: Only {n_medications} medications prescribed.",
             )
         )
 
-    return factors[:4]
+    return factors[:6]
+
+
+def calculate_domain_scores(patient: dict[str, Any]) -> list[DomainScore]:
+    inp = int(patient.get("n_inpatient", 0))
+    er = int(patient.get("n_emergency", 0))
+    meds = int(patient.get("n_medications", 0))
+    stay = int(patient.get("time_in_hospital", 0))
+    age = str(patient.get("age", ""))
+    diag = str(patient.get("diag_1", ""))
+
+    # 1. Prior Utilization (0-100)
+    util_score = min(100, int((inp * 30) + (er * 20)))
+    # 2. Polypharmacy Burden
+    poly_score = min(100, int((meds / 40) * 100))
+    # 3. Hospital Stay & Acuity
+    stay_score = min(100, int((stay / 14) * 100))
+    # 4. Chronic Complexity
+    diag_base = 65 if diag in ["Circulatory", "Diabetes", "Respiratory"] else 30
+    # 5. Demographics / Age Vulnerability
+    age_map = {"[40-50)": 25, "[50-60)": 40, "[60-70)": 60, "[70-80)": 85, "[80-90)": 95, "[90-100)": 100}
+    age_score = age_map.get(age, 50)
+
+    def to_level(s: int) -> str:
+        return "High" if s >= 60 else "Moderate" if s >= 35 else "Low"
+
+    return [
+        DomainScore(domain="Prior Utilization", score=util_score, risk_level=to_level(util_score)),
+        DomainScore(domain="Polypharmacy Burden", score=poly_score, risk_level=to_level(poly_score)),
+        DomainScore(domain="Inpatient Acuity & Stay", score=stay_score, risk_level=to_level(stay_score)),
+        DomainScore(domain="Chronic Complexity", score=diag_base, risk_level=to_level(diag_base)),
+        DomainScore(domain="Demographics & Age", score=age_score, risk_level=to_level(age_score)),
+    ]
+
+
+def calculate_benchmarks(patient: dict[str, Any]) -> list[BenchmarkMetric]:
+    return [
+        BenchmarkMetric(
+            metric="Length of Stay",
+            patient_value=float(patient.get("time_in_hospital", 0)),
+            benchmark_median=3.0,
+            high_risk_cutoff=6.0,
+            unit="days",
+        ),
+        BenchmarkMetric(
+            metric="Active Medications",
+            patient_value=float(patient.get("n_medications", 0)),
+            benchmark_median=12.0,
+            high_risk_cutoff=20.0,
+            unit="meds",
+        ),
+        BenchmarkMetric(
+            metric="Prior Inpatient Admissions",
+            patient_value=float(patient.get("n_inpatient", 0)),
+            benchmark_median=0.0,
+            high_risk_cutoff=1.0,
+            unit="visits",
+        ),
+        BenchmarkMetric(
+            metric="Prior Emergency Visits",
+            patient_value=float(patient.get("n_emergency", 0)),
+            benchmark_median=0.0,
+            high_risk_cutoff=1.0,
+            unit="visits",
+        ),
+    ]
 
 
 def fallback_feature_impacts(patient: dict[str, Any]) -> list[FeatureImpact]:
@@ -270,32 +454,32 @@ def fallback_feature_impacts(patient: dict[str, Any]) -> list[FeatureImpact]:
     impacts = []
     inp = int(patient.get("n_inpatient", 0))
     if inp > 0:
-        impacts.append(FeatureImpact(feature="total_prior_visits", impact=0.18 * inp))
-        impacts.append(FeatureImpact(feature="had_prior_inpatient", impact=0.12))
+        impacts.append(FeatureImpact(feature="Total Prior Inpatient & ER Visits", impact=0.18 * inp, raw_feature="total_prior_visits"))
+        impacts.append(FeatureImpact(feature="Prior Inpatient Admission History", impact=0.12, raw_feature="had_prior_inpatient"))
     else:
-        impacts.append(FeatureImpact(feature="total_prior_visits", impact=-0.14))
+        impacts.append(FeatureImpact(feature="Total Prior Inpatient & ER Visits", impact=-0.14, raw_feature="total_prior_visits"))
 
     time_h = int(patient.get("time_in_hospital", 1))
     if time_h >= 7:
-        impacts.append(FeatureImpact(feature="long_stay_flag", impact=0.09))
+        impacts.append(FeatureImpact(feature="Extended Stay Flag (≥7 Days)", impact=0.09, raw_feature="long_stay_flag"))
     elif time_h <= 2:
-        impacts.append(FeatureImpact(feature="time_in_hospital", impact=-0.06))
+        impacts.append(FeatureImpact(feature="Hospital Stay Length (Days)", impact=-0.06, raw_feature="time_in_hospital"))
 
     meds = int(patient.get("n_medications", 10))
     if meds > 18:
-        impacts.append(FeatureImpact(feature="n_medications", impact=0.08))
+        impacts.append(FeatureImpact(feature="Active Prescribed Medications", impact=0.08, raw_feature="n_medications"))
     else:
-        impacts.append(FeatureImpact(feature="n_medications", impact=-0.04))
+        impacts.append(FeatureImpact(feature="Active Prescribed Medications", impact=-0.04, raw_feature="n_medications"))
 
     age = str(patient.get("age", ""))
     if age in ["[80-90)", "[90-100)"]:
-        impacts.append(FeatureImpact(feature="age", impact=0.07))
+        impacts.append(FeatureImpact(feature="Patient Age Bracket", impact=0.07, raw_feature="age"))
     elif age in ["[40-50)", "[50-60)"]:
-        impacts.append(FeatureImpact(feature="age", impact=-0.05))
+        impacts.append(FeatureImpact(feature="Patient Age Bracket", impact=-0.05, raw_feature="age"))
 
     diag = str(patient.get("diag_1", ""))
     if diag in ["Circulatory", "Diabetes"]:
-        impacts.append(FeatureImpact(feature="diag_complexity", impact=0.05))
+        impacts.append(FeatureImpact(feature=f"Primary Diagnosis: {diag}", impact=0.05, raw_feature="diag_1"))
 
     return impacts[:8]
 
@@ -369,17 +553,32 @@ def predict_readmission(patient: PatientInput):
 
                 clean_impacts = []
                 for feat, val in zip(feat_names, shap_values):
-                    clean_name = feat.replace("num__", "").replace("cat__", "").replace("age__", "")
-                    clean_impacts.append((clean_name, float(val)))
+                    readable_name = clean_feature_label(feat)
+                    clean_impacts.append((readable_name, float(val), feat))
 
                 clean_impacts.sort(key=lambda x: abs(x[1]), reverse=True)
-                for clean_name, val in clean_impacts[:10]:
+                for clean_name, val, raw_name in clean_impacts[:10]:
                     shap_feature_impacts.append(
-                        FeatureImpact(feature=clean_name, impact=round(val, 4))
+                        FeatureImpact(
+                            feature=clean_name,
+                            impact=round(val, 4),
+                            raw_feature=raw_name,
+                        )
                     )
 
-                top_increasing = shap_explanation.get("top_increasing_risk", [])
-                top_decreasing = shap_explanation.get("top_decreasing_risk", [])
+                for item in shap_explanation.get("top_increasing_risk", []):
+                    top_increasing.append({
+                        "feature": clean_feature_label(item["feature"]),
+                        "raw_feature": item["feature"],
+                        "shap_value": item["shap_value"],
+                    })
+
+                for item in shap_explanation.get("top_decreasing_risk", []):
+                    top_decreasing.append({
+                        "feature": clean_feature_label(item["feature"]),
+                        "raw_feature": item["feature"],
+                        "shap_value": item["shap_value"],
+                    })
             except Exception as se:
                 print(f"[Info] SHAP calculation fallback: {se}")
                 shap_feature_impacts = fallback_feature_impacts(patient_dict)
@@ -388,6 +587,8 @@ def predict_readmission(patient: PatientInput):
 
         contributing_factors = derive_contributing_factors(patient_dict)
         prevention_protocols = get_prevention_protocols()
+        domain_scores = calculate_domain_scores(patient_dict)
+        benchmarks = calculate_benchmarks(patient_dict)
 
         return PredictionResponse(
             prediction=is_high_risk,
@@ -399,6 +600,8 @@ def predict_readmission(patient: PatientInput):
             top_decreasing_risk=top_decreasing,
             contributing_factors=contributing_factors,
             prevention_protocols=prevention_protocols,
+            domain_scores=domain_scores,
+            benchmarks=benchmarks,
             disclaimer=(
                 "Feature impacts describe each parameter's relative contribution to the model's "
                 "predicted risk score compared to baseline averages. They do not establish direct clinical causality."
