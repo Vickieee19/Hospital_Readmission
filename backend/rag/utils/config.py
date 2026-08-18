@@ -1,0 +1,76 @@
+"""
+utils/config.py
+───────────────
+Centralised configuration loader.
+All modules import from here so .env changes propagate automatically.
+"""
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Resolve the project roots
+_RAG_ROOT = Path(__file__).resolve().parent.parent  # backend/rag
+_REPO_ROOT = Path(__file__).resolve().parents[3]   # project root
+
+# Load root .env
+_ENV_FILE = _REPO_ROOT / ".env"
+if not _ENV_FILE.exists():
+    _ENV_FILE = _RAG_ROOT / ".env"
+
+load_dotenv(dotenv_path=_ENV_FILE, override=True)
+
+
+def _require(key: str) -> str:
+    """Raise a clear error when a required env-var is missing."""
+    value = os.getenv(key)
+    if not value:
+        raise EnvironmentError(
+            f"Required environment variable '{key}' is not set. "
+            f"Please check your .env file at {_ENV_FILE}."
+        )
+    return value
+
+
+def _path(key: str, default: str) -> Path:
+    raw = os.getenv(key, default)
+    p = Path(raw)
+    # If relative, anchor to repo root
+    if not p.is_absolute():
+        p = _REPO_ROOT / p
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+
+
+# ── API Keys ──────────────────────────────────────────────────────────────────
+# Prefer Gemini configuration for this project. Keep Groq values as compatibility
+# fallbacks for older local setups.
+GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
+GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+
+# ── Model ─────────────────────────────────────────────────────────────────────
+# Use the env's Gemini model when present; fallback to the legacy Groq model name
+# for older .env files.
+GEMINI_MODEL: str = os.getenv("GEMINI_MODEL") or os.getenv("GROQ_MODEL", "gemini-2.5-flash")
+GROQ_MODEL: str = os.getenv("GROQ_MODEL", GEMINI_MODEL)
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+CHROMA_DB_PATH: Path        = _path("CHROMA_DB_PATH",        "./vectordb")
+KNOWLEDGE_BASE_PATH: Path   = _path("KNOWLEDGE_BASE_PATH",   "./knowledge_base")
+UPLOADS_PATH: Path          = _path("UPLOADS_PATH",          "./uploads")
+
+# ── Embedding ─────────────────────────────────────────────────────────────────
+EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+
+# ── Chunking ──────────────────────────────────────────────────────────────────
+CHUNK_SIZE: int     = int(os.getenv("CHUNK_SIZE",    "600"))
+CHUNK_OVERLAP: int  = int(os.getenv("CHUNK_OVERLAP", "80"))
+
+# ── Retrieval ─────────────────────────────────────────────────────────────────
+TOP_K_RESULTS: int  = int(os.getenv("TOP_K_RESULTS", "5"))
+
+# ── ChromaDB ──────────────────────────────────────────────────────────────────
+CHROMA_COLLECTION_NAME: str = os.getenv(
+    "CHROMA_COLLECTION_NAME", "medical_guidelines"
+)
