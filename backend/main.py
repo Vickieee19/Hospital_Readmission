@@ -36,13 +36,13 @@ for p in [PROJECT_ROOT, BACKEND_DIR, RAG_ROOT]:
 # Load root .env
 load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=True)
 
-# Safe SHAP import
-_has_shap = False
+# Safe XAI import
+_has_xai = False
 try:
-    from src.explainability import explain_patient
-    _has_shap = True
+    from xai import explain_prediction
+    _has_xai = True
 except Exception as e:
-    print(f"[Info] SHAP explanation module deferred: {e}")
+    print(f"[Info] XAI explanation module deferred: {e}")
 
 # ── Paths ───────────────────────────────────────────────────────────────────
 MODELS_DIR = PROJECT_ROOT / "models"
@@ -154,6 +154,9 @@ class PredictionResponse(BaseModel):
     probability: float
     threshold: float
     risk_level: str
+    shap_summary: str | None = None
+    primary_risk: dict[str, Any] | None = None
+    primary_protective: dict[str, Any] | None = None
     shap_values: list[FeatureImpact]
     top_increasing_risk: list[dict[str, Any]]
     top_decreasing_risk: list[dict[str, Any]]
@@ -162,6 +165,32 @@ class PredictionResponse(BaseModel):
     domain_scores: list[DomainScore]
     benchmarks: list[BenchmarkMetric]
     disclaimer: str
+    xai_explanation: dict[str, Any] | None = None
+
+
+def build_shap_summary(top_risk: list[dict[str, Any]], top_lower: list[dict[str, Any]]) -> str:
+    """Create concise, readable narrative from top SHAP contributors."""
+    risk_items = top_risk[:3]
+    protect_items = top_lower[:3]
+
+    risk_text = ", ".join(
+        f"{item['feature']} (+{item['shap_value']:.3f})"
+        for item in risk_items
+    )
+    protect_text = ", ".join(
+        f"{item['feature']} ({item['shap_value']:.3f})"
+        for item in protect_items
+    )
+
+    summary_parts = []
+    if risk_items:
+        summary_parts.append(f"Main risk drivers were {risk_text}.")
+    if protect_items:
+        summary_parts.append(f"The main protective factors were {protect_text}.")
+    if not summary_parts:
+        return "The model did not identify strong positive or negative feature shifts for this patient profile."
+
+    return " ".join(summary_parts)
 
 
 # ── Feature Label Dictionary ───────────────────────────────────────────────
@@ -540,50 +569,85 @@ def predict_readmission(patient: PatientInput):
         else:
             risk_level = "High"
 
-        # Compute SHAP explanation if available
+        # Compute XAI explanation
         shap_feature_impacts: list[FeatureImpact] = []
         top_increasing: list[dict[str, Any]] = []
         top_decreasing: list[dict[str, Any]] = []
+        xai_explanation_data: dict[str, Any] | None = None
+        disclaimer_text = (
+            "These feature contributions explain the model's predicted risk for this patient "
+            "relative to the model's baseline. They are attribution values, not proof of causation."
+        )
 
-        if _has_shap:
+        if _has_xai:
             try:
-                shap_explanation = explain_patient(_model, patient_df, top_n=8)
-                feat_names = shap_explanation.get("feature_names", [])
-                shap_values = shap_explanation.get("shap_values", [])
+                xai_explanation_data = explain_prediction(
+                    _model,
+                    patient_df,
+                    top_n=8,
+                    threshold=operating_threshold,
+                )
 
-                clean_impacts = []
-                for feat, val in zip(feat_names, shap_values):
-                    readable_name = clean_feature_label(feat)
-                    clean_impacts.append((readable_name, float(val), feat))
+                for item in xai_explanation_data.get("top_increasing_risk", []):
+                    clean_name = clean_feature_label(item["feature"])
+                    val = float(item["shap_value"])
+                    top_increasing.append({
+                        "feature": clean_name,
+                        "raw_feature": item["feature"],
+                        "shap_value": round(val, 4),
+                        "direction": item.get("direction", "increases risk"),
+                    })
 
-                clean_impacts.sort(key=lambda x: abs(x[1]), reverse=True)
-                for clean_name, val, raw_name in clean_impacts[:10]:
+                for item in xai_explanation_data.get("top_decreasing_risk", []):
+                    clean_name = clean_feature_label(item["feature"])
+                    val = float(item["shap_value"])
+                    top_decreasing.append({
+                        "feature": clean_name,
+                        "raw_feature": item["feature"],
+                        "shap_value": round(val, 4),
+                        "direction": item.get("direction", "decreases risk"),
+                    })
+
+                for item in xai_explanation_data.get("feature_contributions", []):
+                    clean_name = clean_feature_label(item["feature"])
+                    val = float(item["shap_value"])
                     shap_feature_impacts.append(
                         FeatureImpact(
                             feature=clean_name,
                             impact=round(val, 4),
-                            raw_feature=raw_name,
+                            raw_feature=item["feature"],
                         )
                     )
 
-                for item in shap_explanation.get("top_increasing_risk", []):
-                    top_increasing.append({
-                        "feature": clean_feature_label(item["feature"]),
-                        "raw_feature": item["feature"],
-                        "shap_value": item["shap_value"],
-                    })
+                if xai_explanation_data.get("disclaimer"):
+                    disclaimer_text = xai_explanation_data["disclaimer"]
 
-                for item in shap_explanation.get("top_decreasing_risk", []):
-                    top_decreasing.append({
-                        "feature": clean_feature_label(item["feature"]),
-                        "raw_feature": item["feature"],
-                        "shap_value": item["shap_value"],
-                    })
             except Exception as se:
-                print(f"[Info] SHAP calculation fallback: {se}")
+                print(f"[Info] XAI calculation fallback: {se}")
                 shap_feature_impacts = fallback_feature_impacts(patient_dict)
         else:
             shap_feature_impacts = fallback_feature_impacts(patient_dict)
+
+        if not top_increasing and not top_decreasing and shap_feature_impacts:
+            for fi in shap_feature_impacts:
+                if fi.impact > 0:
+                    top_increasing.append({
+                        "feature": fi.feature,
+                        "raw_feature": fi.raw_feature,
+                        "shap_value": fi.impact,
+                        "direction": "increases risk",
+                    })
+                elif fi.impact < 0:
+                    top_decreasing.append({
+                        "feature": fi.feature,
+                        "raw_feature": fi.raw_feature,
+                        "shap_value": fi.impact,
+                        "direction": "decreases risk",
+                    })
+
+        primary_risk = top_increasing[0] if top_increasing else None
+        primary_protective = top_decreasing[0] if top_decreasing else None
+        shap_summary = build_shap_summary(top_increasing, top_decreasing)
 
         contributing_factors = derive_contributing_factors(patient_dict)
         prevention_protocols = get_prevention_protocols()
@@ -595,6 +659,9 @@ def predict_readmission(patient: PatientInput):
             probability=prob,
             threshold=round(operating_threshold, 4),
             risk_level=risk_level,
+            shap_summary=shap_summary,
+            primary_risk=primary_risk,
+            primary_protective=primary_protective,
             shap_values=shap_feature_impacts,
             top_increasing_risk=top_increasing,
             top_decreasing_risk=top_decreasing,
@@ -602,10 +669,8 @@ def predict_readmission(patient: PatientInput):
             prevention_protocols=prevention_protocols,
             domain_scores=domain_scores,
             benchmarks=benchmarks,
-            disclaimer=(
-                "Feature impacts describe each parameter's relative contribution to the model's "
-                "predicted risk score compared to baseline averages. They do not establish direct clinical causality."
-            ),
+            disclaimer=disclaimer_text,
+            xai_explanation=xai_explanation_data,
         )
     except Exception as e:
         raise HTTPException(
